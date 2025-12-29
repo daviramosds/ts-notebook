@@ -186,28 +186,28 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
             {mode === 'signup' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.name}</label>
-                <div className="relative">
-                  <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                <div className="relative group">
+                  <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/30 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all duration-200 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
                   />
                 </div>
               </div>
             )}
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.email}</label>
-              <div className="relative">
-                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+              <div className="relative group">
+                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
                 <input
                   type="email"
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/30 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all duration-200 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
                 />
               </div>
             </div>
