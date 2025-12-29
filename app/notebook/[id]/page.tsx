@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, ArrowLeft, Save, Moon, Sun, Cloud, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, ArrowLeft, Save, Moon, Sun, Cloud, CheckCircle2, AlertCircle, Loader2, Download, Upload } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
 import { getNotebook, saveNotebook } from '@/app/_actions/notebook';
@@ -170,6 +170,50 @@ export default function NotebookPage() {
     setHasUnsavedChanges(true);
   };
 
+  // Export notebook as JSON file
+  const handleExport = () => {
+    const notebookData = {
+      version: 1,
+      name: title,
+      cells: cells,
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(notebookData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'notebook'}.tslab.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Import notebook from JSON file
+  const handleImport = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.tslab.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.cells && Array.isArray(data.cells)) {
+          setCells(data.cells);
+          if (data.name) setTitle(data.name);
+          setHasUnsavedChanges(true);
+        } else {
+          alert('Arquivo inválido. Certifique-se de que é um notebook TSLab válido.');
+        }
+      } catch (err) {
+        alert('Erro ao ler arquivo. Verifique se é um JSON válido.');
+      }
+    };
+    input.click();
+  };
+
   if (loadingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
@@ -234,6 +278,21 @@ export default function NotebookPage() {
             >
               <Save size={16} strokeWidth={2.5} />
               <span className="hidden sm:inline">SALVAR</span>
+            </button>
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+            <button
+              onClick={handleExport}
+              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-green-500 hover:border-green-300 dark:hover:border-green-800 transition-all shadow-sm cursor-pointer"
+              title="Exportar Notebook"
+            >
+              <Download size={18} />
+            </button>
+            <button
+              onClick={handleImport}
+              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-purple-500 hover:border-purple-300 dark:hover:border-purple-800 transition-all shadow-sm cursor-pointer"
+              title="Importar Notebook"
+            >
+              <Upload size={18} />
             </button>
             <button
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
