@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
   Plus, ArrowLeft, Save, Moon, Sun, Cloud,
-  CheckCircle2, ChevronRight, AlertCircle
+  CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
@@ -16,7 +16,6 @@ export default function NotebookPage() {
   const params = useParams();
   const router = useRouter();
   const notebookId = params.id as string;
-
   const { resolvedTheme, setTheme } = useTheme();
 
   const [cells, setCells] = useState<any[]>([]);
@@ -133,75 +132,64 @@ export default function NotebookPage() {
     setHasUnsavedChanges(true);
   };
 
-  // --- NOVA LÓGICA DE MOVER (Setinhas) ---
   const handleMoveCell = (id: string, direction: 'up' | 'down') => {
     const index = cells.findIndex(c => c.id === id);
     if (index === -1) return;
-
-    // Proteção para não mover para fora dos limites
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === cells.length - 1) return;
 
     const newCells = [...cells];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-
-    // Troca de posição
     [newCells[index], newCells[targetIndex]] = [newCells[targetIndex], newCells[index]];
-
     setCells(newCells);
     setHasUnsavedChanges(true);
   };
 
-  // --- LÓGICA DE DRAG AND DROP ---
   const onDragEnd = (result: any) => {
     if (!result.destination) return;
-
-    // Cria uma cópia rasa do array para não mutar o estado diretamente
     const items = Array.from(cells);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
-
     setCells(items);
     setHasUnsavedChanges(true);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#020617] pb-20 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans transition-colors duration-300">
 
-      {/* HEADER */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-[#020617]/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 h-16 transition-colors">
-        <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
+      <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
 
-          {/* Navegação e Título */}
-          <div className="flex items-center gap-2 mr-4">
+          {/* ESQUERDA: Voltar + Título */}
+          <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
-              // ADICIONADO: cursor-pointer explícito
-              className="p-2 -ml-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+              // ADICIONADO: cursor-pointer
+              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-sm group cursor-pointer"
+              title="Voltar ao Dashboard"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
             </button>
 
-            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-800" />
 
-            <div className="flex flex-col justify-center">
-              <div className="flex items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                <span>Dashboard</span>
-                <ChevronRight size={10} className="mx-1" />
-                <span>Notebook</span>
-              </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">
+                NOTEBOOK
+              </span>
               <input
                 value={title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="bg-transparent font-bold text-sm md:text-base outline-none text-slate-800 dark:text-slate-200 placeholder-slate-400 min-w-[200px]"
+                className="bg-transparent font-bold text-lg outline-none text-slate-900 dark:text-slate-100 placeholder-slate-400 min-w-[200px] focus:underline decoration-blue-500/30 underline-offset-4 decoration-2"
                 placeholder="Nome do Notebook"
               />
             </div>
           </div>
 
-          {/* Ações e Status */}
-          <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-2 text-xs font-medium mr-2 transition-all">
+          {/* DIREITA: Status + Salvar + Tema */}
+          <div className="flex items-center gap-3 sm:gap-4">
+
+            <div className="hidden md:flex items-center gap-2 text-xs font-medium mr-2 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800">
               {isSaving ? (
                 <div className="flex items-center gap-2 text-blue-500">
                   <Cloud size={14} className="animate-pulse" />
@@ -210,34 +198,40 @@ export default function NotebookPage() {
               ) : hasUnsavedChanges ? (
                 <div className="flex items-center gap-2 text-amber-500 animate-in fade-in">
                   <AlertCircle size={14} />
-                  <span>Alterações pendentes</span>
+                  <span>Não salvo</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-slate-400">
                   <CheckCircle2 size={14} className="text-green-500" />
-                  <span className="opacity-70">Salvo {lastSaved && `às ${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</span>
+                  <span className="opacity-70">
+                    {lastSaved ? `Salvo às ${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Salvo'}
+                  </span>
                 </div>
               )}
             </div>
 
             <button
+              onClick={handleSave}
+              disabled={isSaving || (!hasUnsavedChanges && !isSaving)}
+              // ADICIONADO: cursor-pointer e cursor-not-allowed
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-wide transition-all shadow-sm ${hasUnsavedChanges
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30 hover:scale-105 cursor-pointer'
+                  : 'bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed opacity-70 hover:bg-slate-200 dark:hover:bg-slate-800'
+                }`}
+            >
+              <Save size={16} strokeWidth={2.5} />
+              <span className="hidden sm:inline">SALVAR</span>
+            </button>
+
+            <button
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-              className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+              // ADICIONADO: cursor-pointer
+              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 dark:hover:text-yellow-400 transition-all shadow-sm cursor-pointer"
+              aria-label="Toggle Theme"
             >
               {mounted && (resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />)}
             </button>
 
-            <button
-              onClick={handleSave}
-              disabled={isSaving || (!hasUnsavedChanges && !isSaving)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${hasUnsavedChanges
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 hover:scale-105 cursor-pointer'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-default opacity-70'
-                }`}
-            >
-              <Save size={16} />
-              <span className="hidden sm:inline">SALVAR</span>
-            </button>
           </div>
         </div>
       </header>
@@ -260,7 +254,6 @@ export default function NotebookPage() {
                           onDelete={deleteCell}
                           onExecute={handleExecute}
                           onSave={handleSave}
-                          // AGORA ESTÁ PASSANDO A FUNÇÃO DE MOVER:
                           onMove={handleMoveCell}
                           onToggleCollapse={(id) => setCells(cells.map(c => c.id === id ? { ...c, isCollapsed: !c.isCollapsed } : c))}
                         />
@@ -274,12 +267,12 @@ export default function NotebookPage() {
           </Droppable>
         </DragDropContext>
 
-        <div className="flex justify-center gap-4 py-12 opacity-60 hover:opacity-100 transition-opacity">
-          <button onClick={() => addCell('code')} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-lg transition-all cursor-pointer">
-            <Plus size={14} /> Adicionar Código
+        <div className="flex justify-center gap-4 py-16 opacity-60 hover:opacity-100 transition-opacity">
+          <button onClick={() => addCell('code')} className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer">
+            <Plus size={16} /> Adicionar Código
           </button>
-          <button onClick={() => addCell('markdown')} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-lg transition-all cursor-pointer">
-            <Plus size={14} /> Adicionar Texto
+          <button onClick={() => addCell('markdown')} className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer">
+            <Plus size={16} /> Adicionar Texto
           </button>
         </div>
       </main>

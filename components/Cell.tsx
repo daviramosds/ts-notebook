@@ -1,7 +1,7 @@
 'use client';
-
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm'; // Importe o plugin GFM
 import Editor from './Editor';
 import {
   Play, Trash2, ChevronUp, ChevronDown, Edit3, Eye,
@@ -43,7 +43,6 @@ const cellTranslations = {
 const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdate, onDelete, onExecute, onSave, onMove, onToggleCollapse }) => {
   const [isEditingMarkdown, setIsEditingMarkdown] = useState(cell.type === 'markdown' && !cell.content);
   const t = cellTranslations[lang];
-
   const isDark = theme === 'dark';
 
   const handleDelete = () => {
@@ -55,10 +54,11 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
   const renderOutput = () => {
     if (!cell.output || cell.isCollapsed) return null;
     const { logs, error, result } = cell.output;
+
     if ((!logs || logs.length === 0) && !error && result === undefined) return null;
 
     return (
-      <div className={`mt-4 p-4 rounded-lg border font-mono text-sm overflow-x-auto shadow-inner transition-colors duration-200 ${isDark ? 'bg-[#0f172a] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-800'
+      <div className={`mt-4 p-4 rounded-lg border font-mono text-sm overflow-x-auto shadow-inner transition-colors duration-200 ${isDark ? 'bg-[#0d1117] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
         }`}>
         <div className={`flex items-center justify-between mb-2 pb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
           <span className="text-[10px] font-bold tracking-widest uppercase opacity-50">{t.console}</span>
@@ -86,28 +86,27 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
     <div className={`group relative rounded-xl shadow-sm border transition-all overflow-hidden flex ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
       } ${cell.isCollapsed ? 'opacity-80' : 'min-h-[160px]'}`}>
 
-      {/* Barra Lateral (Sidebar) */}
-      <div className={`w-12 flex flex-col items-center py-3 border-r shrink-0 transition-colors ${isDark ? 'bg-[#020617] border-slate-800' : 'bg-slate-50 border-slate-200'
+      {/* Sidebar Handle */}
+      <div className={`w-12 flex flex-col items-center py-3 border-r shrink-0 transition-colors ${isDark ? 'bg-[#0B0F19] border-slate-800' : 'bg-slate-50 border-slate-200'
         }`}>
-
         <div {...dragHandleProps} className={`p-2 cursor-grab active:cursor-grabbing mb-2 transition-colors ${isDark ? 'text-slate-600 hover:text-blue-500' : 'text-slate-300 hover:text-blue-500'
           }`}>
           <GripVertical size={18} />
         </div>
 
-        {/* BOTÃO PLAY: Estilo "Clean" igual da Lixeira (Verde) */}
+        {/* Play Button only for Code */}
         {!cell.isCollapsed && cell.type === 'code' && (
           <button
             onClick={() => onExecute(cell.id)}
             disabled={cell.isExecuting}
             className={`p-2 rounded-full mb-2 group-play relative
               transition-all duration-100 ease-in-out
-              active:scale-75 active:bg-green-500/20  /* Clique agressivo */
+              active:scale-75 active:bg-green-500/20  
               ${cell.isExecuting
                 ? 'text-blue-500 bg-blue-100 dark:bg-blue-900/30 cursor-wait'
                 : isDark
-                  ? 'text-green-500 hover:bg-green-900/30 hover:text-green-400 cursor-pointer' /* Estilo Lixeira Dark (Verde) */
-                  : 'text-green-600 hover:bg-green-50 cursor-pointer' /* Estilo Lixeira Light (Verde) */
+                  ? 'text-green-500 hover:bg-green-900/30 hover:text-green-400 cursor-pointer'
+                  : 'text-green-600 hover:bg-green-50 cursor-pointer'
               }`}
             title="Executar Célula (Shift + Enter)"
           >
@@ -123,12 +122,11 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
         <button onClick={() => onMove(cell.id, 'down')} className={`p-1.5 rounded mt-0.5 transition-colors cursor-pointer active:scale-90 ${isDark ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-200'}`}><ChevronDown size={16} /></button>
 
         <div className="flex-grow" />
-
         <button onClick={handleDelete} className={`p-2 rounded-full mb-1 opacity-0 group-hover:opacity-100 transition-all cursor-pointer active:scale-75 ${isDark ? 'text-red-400 hover:bg-red-900/30 hover:text-red-300' : 'text-red-500 hover:bg-red-50'
           }`}><Trash2 size={18} /></button>
       </div>
 
-      {/* Conteúdo Principal */}
+      {/* Content Area */}
       <div className="flex-1 p-4 min-w-0">
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2 overflow-hidden">
@@ -137,7 +135,6 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
             </button>
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 select-none">{cell.type}</span>
           </div>
-
           {!cell.isCollapsed && cell.type === 'markdown' && (
             <button onClick={() => setIsEditingMarkdown(!isEditingMarkdown)} className={`text-xs font-medium flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors cursor-pointer active:scale-95 ${isDark ? 'bg-slate-800 text-slate-400 hover:text-slate-100' : 'bg-slate-100 text-slate-500 hover:text-slate-900'
               }`}>
@@ -158,9 +155,30 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
                 {isEditingMarkdown ? (
                   <Editor value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
                 ) : (
-                  <div className={`prose max-w-none cursor-pointer p-3 rounded-lg transition-all border border-transparent ${isDark ? 'prose-invert hover:bg-white/5 hover:border-slate-800' : 'prose-slate hover:bg-slate-50 hover:border-slate-200'
-                    }`} onClick={() => setIsEditingMarkdown(true)}>
-                    {cell.content ? <ReactMarkdown>{cell.content}</ReactMarkdown> : <span className="italic text-slate-500 opacity-50 select-none">{t.placeholder}</span>}
+                  // A MÁGICA DO MARKDOWN ACONTECE AQUI
+                  <div
+                    className={`prose prose-sm max-w-none p-3 rounded-lg transition-all border border-transparent
+                      prose-p:leading-relaxed prose-pre:bg-transparent prose-pre:p-0
+                      ${isDark
+                        ? 'prose-invert hover:bg-white/5 hover:border-slate-800 prose-a:text-blue-400'
+                        : 'prose-slate hover:bg-slate-50 hover:border-slate-200 prose-a:text-blue-600'
+                      }`}
+                    onClick={() => setIsEditingMarkdown(true)}
+                  >
+                    {cell.content ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          a: ({ node, ...props }) => (
+                            <a target="_blank" rel="noopener noreferrer" {...props} />
+                          )
+                        }}
+                      >
+                        {cell.content}
+                      </ReactMarkdown>
+                    ) : (
+                      <span className="italic text-slate-500 opacity-50 select-none cursor-pointer">{t.placeholder}</span>
+                    )}
                   </div>
                 )}
               </div>
