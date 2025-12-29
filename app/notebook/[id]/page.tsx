@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
-import { notebookService, getDbConfig } from '@/lib/database-manager';
+import { getNotebook, saveNotebook } from '@/app/actions';
 import { compileTS, executeJS } from '@/lib/compiler';
 
 export default function NotebookPage() {
@@ -35,44 +35,58 @@ export default function NotebookPage() {
     }
     const userData = JSON.parse(savedUser);
     setUser(userData);
-    loadNotebook(userData, notebookId);
+    loadNotebook(notebookId);
   }, [notebookId]);
 
-  const loadNotebook = async (userData: any, id: string) => {
+  const loadNotebook = async (id: string) => {
     try {
-      const config = getDbConfig();
-      const data = await notebookService.get(config, userData.token, id);
+      const data = await getNotebook(id);
       if (data) {
         setTitle(data.name);
-        const content = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+        const content = data.content as any;
         setCells(content.cells || []);
         setLastSaved(new Date(data.updated_at));
         setHasUnsavedChanges(false);
       }
     } catch (err) {
-      console.error("Erro ao carregar", err);
+      console.error("Erro ao carregar notebook:", err);
     }
   };
 
-  const handleSave = async () => {
+  // Função de salvamento estável com useCallback
+  const handleSave = useCallback(async () => {
     if (!user) return;
     setIsSaving(true);
     try {
-      const config = getDbConfig();
-      await notebookService.upsert(config, user.token, {
+      await saveNotebook({
         id: notebookId,
         name: title,
         cells: cells,
-        theme: resolvedTheme
+        theme: resolvedTheme || 'light'
       });
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
     } catch (err) {
-      alert('Erro ao salvar');
+      console.error(err);
+      alert('Erro ao salvar notebook');
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [user, notebookId, title, cells, resolvedTheme]);
+
+  // Listener global para CTRL + S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Suporta Ctrl+S (Win/Linux) e Command+S (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
 
   const handleExecute = async (cellId: string) => {
     const cellIndex = cells.findIndex(c => c.id === cellId);
@@ -84,6 +98,7 @@ export default function NotebookPage() {
     setCells([...newCells]);
 
     let previousCode = '';
+    // Compila o código das células anteriores para criar contexto
     for (let i = 0; i < cellIndex; i++) {
       if (cells[i].type === 'code') {
         try {
@@ -140,39 +155,37 @@ export default function NotebookPage() {
 
     const newCells = [...cells];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
     [newCells[index], newCells[targetIndex]] = [newCells[targetIndex], newCells[index]];
+
     setCells(newCells);
     setHasUnsavedChanges(true);
   };
 
   const onDragEnd = (result: any) => {
     if (!result.destination) return;
+
     const items = Array.from(cells);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
+
     setCells(items);
     setHasUnsavedChanges(true);
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans transition-colors duration-300">
-
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-
-          {/* ESQUERDA: Voltar + Título */}
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
-              // ADICIONADO: cursor-pointer
               className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-sm group cursor-pointer"
               title="Voltar ao Dashboard"
             >
               <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
             </button>
-
             <div className="h-8 w-px bg-slate-200 dark:bg-slate-800" />
-
             <div className="flex flex-col">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">
                 NOTEBOOK
@@ -186,9 +199,7 @@ export default function NotebookPage() {
             </div>
           </div>
 
-          {/* DIREITA: Status + Salvar + Tema */}
           <div className="flex items-center gap-3 sm:gap-4">
-
             <div className="hidden md:flex items-center gap-2 text-xs font-medium mr-2 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800">
               {isSaving ? (
                 <div className="flex items-center gap-2 text-blue-500">
@@ -213,10 +224,9 @@ export default function NotebookPage() {
             <button
               onClick={handleSave}
               disabled={isSaving || (!hasUnsavedChanges && !isSaving)}
-              // ADICIONADO: cursor-pointer e cursor-not-allowed
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-wide transition-all shadow-sm ${hasUnsavedChanges
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30 hover:scale-105 cursor-pointer'
-                  : 'bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed opacity-70 hover:bg-slate-200 dark:hover:bg-slate-800'
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30 hover:scale-105 cursor-pointer'
+                : 'bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed opacity-70 hover:bg-slate-200 dark:hover:bg-slate-800'
                 }`}
             >
               <Save size={16} strokeWidth={2.5} />
@@ -225,13 +235,11 @@ export default function NotebookPage() {
 
             <button
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-              // ADICIONADO: cursor-pointer
               className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 dark:hover:text-yellow-400 transition-all shadow-sm cursor-pointer"
               aria-label="Toggle Theme"
             >
               {mounted && (resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />)}
             </button>
-
           </div>
         </div>
       </header>

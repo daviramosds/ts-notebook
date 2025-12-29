@@ -1,6 +1,6 @@
-
 import { transform } from 'sucrase';
-import { getDbConfig, createSupabaseClient, restClient } from './database-manager';
+
+// REMOVIDO: import { getDbConfig... } pois o arquivo não existe e causava erro de build.
 
 export const compileTS = (tsCode: string): string => {
   try {
@@ -18,11 +18,11 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
   return new Promise((resolve) => {
     const logs: string[] = [];
     let isCapturing = false;
-    
+
     const customConsole = {
       log: (...args: any[]) => {
         if (!isCapturing) return;
-        logs.push(args.map(arg => 
+        logs.push(args.map(arg =>
           typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
         ).join(' '));
       },
@@ -37,17 +37,21 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
     };
 
     try {
-      const config = getDbConfig();
-      const supabase = createSupabaseClient(config);
-
-      const executionFn = new Function('console', 'setCapture', 'supabase', 'rest', `
+      // Criação da função de execução isolada.
+      // Removemos 'supabase' e 'rest' dos argumentos pois não temos essas configs agora.
+      // Usamos 'eval' para garantir que o retorno da última linha seja capturado.
+      const executionFn = new Function('console', 'setCapture', `
         return (async function() {
           try {
             setCapture(false);
-            ${previousContext}
+            // Executa contexto anterior (células acima) sem capturar logs
+            if (previousContext) {
+               try { eval(previousContext); } catch(e) {}
+            }
             
             setCapture(true);
-            ${jsCode}
+            // Executa o código atual e retorna o resultado
+            return eval(${JSON.stringify(jsCode)});
           } catch (e) {
             throw e;
           }
@@ -55,11 +59,12 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
       `);
 
       const setCapture = (val: boolean) => { isCapturing = val; };
-      
-      executionFn(customConsole, setCapture, supabase, restClient)
+
+      // Executa sem passar dependências externas quebradas
+      executionFn(customConsole, setCapture)
         .then((result: any) => resolve({ logs, result }))
         .catch((error: any) => resolve({ logs, result: undefined, error: error.message || String(error) }));
-        
+
     } catch (error: any) {
       resolve({ logs, result: undefined, error: error.message || String(error) });
     }

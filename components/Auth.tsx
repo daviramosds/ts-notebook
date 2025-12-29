@@ -1,12 +1,11 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, User, ArrowRight, Loader2, Moon, Sun, Settings, AlertCircle, Languages, X } from 'lucide-react';
-import { getDbConfig, saveDbConfig, supabaseAuth, DbConfig } from '@/lib/database-manager';
+import { Mail, Lock, User, ArrowRight, Loader2, Moon, Sun, AlertCircle, Languages } from 'lucide-react';
 
 interface AuthProps {
-  onLogin: (user: { name: string, email: string, token?: string }) => void;
+  // Atualizado para aceitar o ID opcional, permitindo que o objeto completo passe
+  onLogin: (user: { id?: string; name: string; email: string }) => void;
   lang: 'pt' | 'en';
   onToggleLang?: () => void;
 }
@@ -20,13 +19,10 @@ const authT = {
     name: 'Nome Completo',
     btnIn: 'ENTRAR AGORA',
     btnUp: 'CRIAR E ACESSAR',
-    desc: 'Autenticação persistente na nuvem.',
-    configTitle: 'Configurar Supabase',
-    save: 'SALVAR E APLICAR',
-    sandbox: 'Modo Sandbox Ativado',
+    desc: 'Autenticação segura via JWT.',
     invalidCreds: 'E-mail ou senha incorretos.',
     networkError: 'Erro de conexão com o servidor.',
-    genericError: 'Ocorreu um problema inesperado.'
+    genericError: 'Ocorreu um problema inesperado.',
   },
   en: {
     signin: 'SIGN IN',
@@ -36,22 +32,17 @@ const authT = {
     name: 'Full Name',
     btnIn: 'SIGN IN NOW',
     btnUp: 'CREATE & ACCESS',
-    desc: 'Instant cloud persistence authentication.',
-    configTitle: 'Configure Supabase',
-    save: 'SAVE & APPLY',
-    sandbox: 'Sandbox Mode Active',
+    desc: 'Secure JWT authentication.',
     invalidCreds: 'Invalid email or password.',
     networkError: 'Server connection error.',
-    genericError: 'An unexpected problem occurred.'
-  }
+    genericError: 'An unexpected problem occurred.',
+  },
 };
 
 export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [isLoading, setIsLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [dbConfig, setDbConfig] = useState<DbConfig>(getDbConfig());
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
 
@@ -73,28 +64,57 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+
+    const endpoint = mode === 'signup' ? '/api/auth/register' : '/api/auth/login';
+
     try {
-      if (dbConfig.url && dbConfig.apiKey) {
-        if (mode === 'signup') {
-          const res = await supabaseAuth.signUp(dbConfig, formData.email, formData.password, formData.name);
-          const token = res.access_token || res.session?.access_token;
-          if (token) onLogin({ name: res.user?.user_metadata?.full_name || res.user?.email, email: res.user?.email, token });
-          else {
-            const loginRes = await supabaseAuth.signIn(dbConfig, formData.email, formData.password);
-            onLogin({ name: loginRes.user?.user_metadata?.full_name, email: loginRes.user?.email, token: loginRes.access_token });
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || t.genericError);
+      }
+
+      // --- LÓGICA ATUALIZADA AQUI ---
+
+      if (mode === 'signup') {
+        // Fluxo de Cadastro + Auto Login
+        const loginRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email, password: formData.password })
+        });
+
+        if (loginRes.ok) {
+          // IMPORTANTE: Lemos o JSON da resposta do login para pegar o ID real
+          const loginData = await loginRes.json();
+          if (loginData.user) {
+            onLogin(loginData.user);
+          } else {
+            // Fallback caso a API não retorne user (mas deve retornar)
+            onLogin({ name: formData.name, email: formData.email });
           }
-        } else {
-          const res = await supabaseAuth.signIn(dbConfig, formData.email, formData.password);
-          onLogin({ name: res.user?.user_metadata?.full_name || res.user?.email, email: res.user?.email, token: res.access_token });
         }
       } else {
-        setTimeout(() => onLogin({ name: formData.name || formData.email.split('@')[0], email: formData.email }), 800);
+        // Fluxo de Login Normal
+        // IMPORTANTE: Agora usamos data.user que vem da API com o ID
+        if (data.user) {
+          onLogin(data.user);
+        } else {
+          // Se a API antiga não mandar user, montamos manualmente (mas sem ID vai dar erro no save)
+          console.warn("API de login não retornou objeto user completo.");
+          onLogin({ name: formData.name || formData.email.split('@')[0], email: formData.email });
+        }
       }
+
     } catch (err: any) {
       let errMsg = err.message || t.genericError;
-      const lower = errMsg.toLowerCase();
-      if (lower.includes('invalid login credentials') || lower.includes('invalid credentials')) errMsg = t.invalidCreds;
-      if (lower.includes('fetch')) errMsg = t.networkError;
+      if (errMsg.toLowerCase().includes('credential')) errMsg = t.invalidCreds;
       setError(errMsg);
     } finally {
       setIsLoading(false);
@@ -110,20 +130,29 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
         >
           <Languages size={20} /> {lang}
         </button>
-        <button onClick={() => setIsConfigOpen(true)} className={`p-3 rounded-2xl backdrop-blur-md border transition-all ${dbConfig.url ? 'bg-green-500/10 border-green-500/20 text-green-600 shadow-lg' : 'bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 text-slate-500 hover:scale-110'}`}><Settings size={20} /></button>
-        <button onClick={toggleTheme} className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 hover:scale-110 transition-all shadow-xl">{theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}</button>
+        <button
+          onClick={toggleTheme}
+          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 hover:scale-110 transition-all shadow-xl"
+        >
+          {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+        </button>
       </div>
 
       <div className="w-full max-w-[440px] relative z-10">
         <div className="text-center mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-[22px] text-white font-black text-3xl shadow-2xl shadow-blue-500/30 mb-6 transform hover:rotate-6">TS</div>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-[22px] text-white font-black text-3xl shadow-2xl shadow-blue-500/30 mb-6 transform hover:rotate-6">
+            TS
+          </div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
             <span className="text-blue-600">TS</span>Lab
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">{t.desc}</p>
         </div>
 
-        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border transition-all duration-300 rounded-[40px] p-10 shadow-2xl ${error ? 'border-red-500/50 animate-shake' : 'border-slate-200 dark:border-slate-800'}`}>
+        <div
+          className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border transition-all duration-300 rounded-[40px] p-10 shadow-2xl ${error ? 'border-red-500/50 animate-shake' : 'border-slate-200 dark:border-slate-800'
+            }`}
+        >
           {error && (
             <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 animate-in slide-in-from-top-2">
               <AlertCircle size={20} className="shrink-0" />
@@ -132,8 +161,24 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
           )}
 
           <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-[20px] mb-8">
-            <button onClick={() => setMode('signin')} className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all ${mode === 'signin' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl' : 'text-slate-500'}`}>{t.signin}</button>
-            <button onClick={() => setMode('signup')} className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all ${mode === 'signup' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl' : 'text-slate-500'}`}>{t.signup}</button>
+            <button
+              onClick={() => setMode('signin')}
+              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all ${mode === 'signin'
+                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl'
+                : 'text-slate-500'
+                }`}
+            >
+              {t.signin}
+            </button>
+            <button
+              onClick={() => setMode('signup')}
+              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all ${mode === 'signup'
+                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl'
+                : 'text-slate-500'
+                }`}
+            >
+              {t.signup}
+            </button>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-5">
@@ -142,7 +187,13 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.name}</label>
                 <div className="relative">
                   <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                  <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white" />
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white"
+                  />
                 </div>
               </div>
             )}
@@ -150,36 +201,48 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.email}</label>
               <div className="relative">
                 <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white" />
+                <input
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white"
+                />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.pass}</label>
               <div className="relative">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                <input type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white" />
+                <input
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white"
+                />
               </div>
             </div>
-            <button disabled={isLoading} className="group w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-[22px] shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 mt-8 relative overflow-hidden">
-              {isLoading ? <Loader2 className="animate-spin" size={20} /> : <><span className="relative z-10">{mode === 'signin' ? t.btnIn : t.btnUp}</span><ArrowRight size={20} strokeWidth={3} className="relative z-10 group-hover:translate-x-1 transition-transform" /></>}
+            <button
+              disabled={isLoading}
+              className="group w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-[22px] shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 mt-8 relative overflow-hidden"
+            >
+              {isLoading ? (
+                <Loader2 className="animate-spin" size={20} />
+              ) : (
+                <>
+                  <span className="relative z-10">{mode === 'signin' ? t.btnIn : t.btnUp}</span>
+                  <ArrowRight
+                    size={20}
+                    strokeWidth={3}
+                    className="relative z-10 group-hover:translate-x-1 transition-transform"
+                  />
+                </>
+              )}
             </button>
           </form>
         </div>
-        <div className="text-center mt-8"><span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-100 dark:bg-slate-900 px-4 py-2 rounded-full border border-transparent dark:border-slate-800">{dbConfig.url ? 'SUPABASE Persist' : t.sandbox}</span></div>
       </div>
-
-      {isConfigOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-sm bg-slate-950/60 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95">
-            <div className="flex justify-between items-center mb-6"><h3 className="font-black text-sm text-slate-800 dark:text-white">{t.configTitle}</h3><button onClick={() => setIsConfigOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400"><X size={20} /></button></div>
-            <div className="space-y-4">
-              <input type="text" value={dbConfig.url} onChange={e => setDbConfig({ ...dbConfig, url: e.target.value })} placeholder="URL..." className="w-full bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-blue-500/20 rounded-2xl py-3.5 px-5 text-sm dark:text-white outline-none" />
-              <input type="password" value={dbConfig.apiKey} onChange={e => setDbConfig({ ...dbConfig, apiKey: e.target.value })} placeholder="API Key..." className="w-full bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-blue-500/20 rounded-2xl py-3.5 px-5 text-sm dark:text-white outline-none" />
-              <button onClick={() => { saveDbConfig(dbConfig); setIsConfigOpen(false); }} className="w-full bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-2xl shadow-xl">{t.save}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
