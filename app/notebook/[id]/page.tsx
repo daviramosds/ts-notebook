@@ -3,13 +3,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import {
-  Plus, ArrowLeft, Save, Moon, Sun, Cloud,
-  CheckCircle2, AlertCircle
-} from 'lucide-react';
+import { Plus, ArrowLeft, Save, Moon, Sun, Cloud, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
-import { getNotebook, saveNotebook } from '@/app/actions';
+import { getNotebook, saveNotebook } from '@/app/_actions/notebook';
 import { compileTS, executeJS } from '@/lib/compiler';
 
 export default function NotebookPage() {
@@ -25,18 +22,33 @@ export default function NotebookPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [loadingSession, setLoadingSession] = useState(true);
 
   useEffect(() => {
     setMounted(true);
-    const savedUser = localStorage.getItem('tslab_user');
-    if (!savedUser) {
-      router.push('/');
-      return;
-    }
-    const userData = JSON.parse(savedUser);
-    setUser(userData);
-    loadNotebook(notebookId);
+    checkSessionAndLoad();
   }, [notebookId]);
+
+  const checkSessionAndLoad = async () => {
+    try {
+      // 1. Verifica autenticação via API
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) {
+        router.push('/');
+        return;
+      }
+      const data = await res.json();
+      setUser(data.user);
+
+      // 2. Carrega o notebook
+      await loadNotebook(notebookId);
+    } catch (err) {
+      console.error("Erro de sessão:", err);
+      router.push('/');
+    } finally {
+      setLoadingSession(false);
+    }
+  };
 
   const loadNotebook = async (id: string) => {
     try {
@@ -53,7 +65,6 @@ export default function NotebookPage() {
     }
   };
 
-  // Função de salvamento estável com useCallback
   const handleSave = useCallback(async () => {
     if (!user) return;
     setIsSaving(true);
@@ -74,16 +85,13 @@ export default function NotebookPage() {
     }
   }, [user, notebookId, title, cells, resolvedTheme]);
 
-  // Listener global para CTRL + S
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Suporta Ctrl+S (Win/Linux) e Command+S (Mac)
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         handleSave();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
@@ -98,7 +106,6 @@ export default function NotebookPage() {
     setCells([...newCells]);
 
     let previousCode = '';
-    // Compila o código das células anteriores para criar contexto
     for (let i = 0; i < cellIndex; i++) {
       if (cells[i].type === 'code') {
         try {
@@ -126,13 +133,7 @@ export default function NotebookPage() {
   };
 
   const addCell = (type: 'code' | 'markdown') => {
-    const newCell = {
-      id: crypto.randomUUID(),
-      type,
-      content: '',
-      isCollapsed: false,
-      output: null
-    };
+    const newCell = { id: crypto.randomUUID(), type, content: '', isCollapsed: false, output: null };
     setCells([...cells, newCell]);
     setHasUnsavedChanges(true);
   };
@@ -155,23 +156,27 @@ export default function NotebookPage() {
 
     const newCells = [...cells];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-
     [newCells[index], newCells[targetIndex]] = [newCells[targetIndex], newCells[index]];
-
     setCells(newCells);
     setHasUnsavedChanges(true);
   };
 
   const onDragEnd = (result: any) => {
     if (!result.destination) return;
-
     const items = Array.from(cells);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
-
     setCells(items);
     setHasUnsavedChanges(true);
   };
+
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans transition-colors duration-300">
@@ -198,7 +203,6 @@ export default function NotebookPage() {
               />
             </div>
           </div>
-
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="hidden md:flex items-center gap-2 text-xs font-medium mr-2 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800">
               {isSaving ? (
@@ -220,7 +224,6 @@ export default function NotebookPage() {
                 </div>
               )}
             </div>
-
             <button
               onClick={handleSave}
               disabled={isSaving || (!hasUnsavedChanges && !isSaving)}
@@ -232,7 +235,6 @@ export default function NotebookPage() {
               <Save size={16} strokeWidth={2.5} />
               <span className="hidden sm:inline">SALVAR</span>
             </button>
-
             <button
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
               className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 dark:hover:text-yellow-400 transition-all shadow-sm cursor-pointer"
@@ -243,7 +245,6 @@ export default function NotebookPage() {
           </div>
         </div>
       </header>
-
       <main className="max-w-4xl mx-auto p-4 space-y-4 mt-8">
         <DragDropContext onDragEnd={onDragEnd}>
           <Droppable droppableId="cells">
@@ -274,7 +275,6 @@ export default function NotebookPage() {
             )}
           </Droppable>
         </DragDropContext>
-
         <div className="flex justify-center gap-4 py-16 opacity-60 hover:opacity-100 transition-opacity">
           <button onClick={() => addCell('code')} className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer">
             <Plus size={16} /> Adicionar Código

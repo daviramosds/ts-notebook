@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, User, ArrowRight, Loader2, Moon, Sun, AlertCircle, Languages } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Loader2, Moon, Sun, AlertCircle, Languages, Eye, EyeOff } from 'lucide-react';
 
 interface AuthProps {
   // Atualizado para aceitar o ID opcional, permitindo que o objeto completo passe
@@ -19,7 +19,7 @@ const authT = {
     name: 'Nome Completo',
     btnIn: 'ENTRAR AGORA',
     btnUp: 'CRIAR E ACESSAR',
-    desc: 'Autenticação segura via JWT.',
+    desc: 'Um notebook typescript.',
     invalidCreds: 'E-mail ou senha incorretos.',
     networkError: 'Erro de conexão com o servidor.',
     genericError: 'Ocorreu um problema inesperado.',
@@ -32,7 +32,7 @@ const authT = {
     name: 'Full Name',
     btnIn: 'SIGN IN NOW',
     btnUp: 'CREATE & ACCESS',
-    desc: 'Secure JWT authentication.',
+    desc: 'A typescript notebook.',
     invalidCreds: 'Invalid email or password.',
     networkError: 'Server connection error.',
     genericError: 'An unexpected problem occurred.',
@@ -45,6 +45,7 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
 
   const t = authT[lang];
 
@@ -126,13 +127,13 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
       <div className="fixed top-8 right-8 flex gap-3 z-50">
         <button
           onClick={onToggleLang}
-          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-blue-600 hover:scale-110 transition-all shadow-xl flex items-center gap-2 text-xs font-black uppercase"
+          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-blue-600 hover:scale-110 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-xl flex items-center gap-2 text-xs font-black uppercase cursor-pointer"
         >
           <Languages size={20} /> {lang}
         </button>
         <button
           onClick={toggleTheme}
-          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 hover:scale-110 transition-all shadow-xl"
+          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 hover:scale-110 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 transition-all shadow-xl cursor-pointer"
         >
           {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
@@ -163,7 +164,7 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
           <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-[20px] mb-8">
             <button
               onClick={() => setMode('signin')}
-              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all ${mode === 'signin'
+              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all cursor-pointer hover:bg-white/50 dark:hover:bg-slate-700/50 ${mode === 'signin'
                 ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl'
                 : 'text-slate-500'
                 }`}
@@ -172,7 +173,7 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
             </button>
             <button
               onClick={() => setMode('signup')}
-              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all ${mode === 'signup'
+              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all cursor-pointer hover:bg-white/50 dark:hover:bg-slate-700/50 ${mode === 'signup'
                 ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl'
                 : 'text-slate-500'
                 }`}
@@ -212,20 +213,27 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.pass}</label>
-              <div className="relative">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+              <div className="relative group">
+                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/20 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all dark:text-white"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/30 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-14 text-sm outline-none transition-all duration-200 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             </div>
             <button
               disabled={isLoading}
-              className="group w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-[22px] shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 mt-8 relative overflow-hidden"
+              className="group w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-[22px] shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 mt-8 relative overflow-hidden cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isLoading ? (
                 <Loader2 className="animate-spin" size={20} />

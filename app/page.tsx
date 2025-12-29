@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import Auth from '@/components/Auth';
-import { getNotebooks, saveNotebook } from '@/app/actions';
-import { Loader2, Plus, FileCode, Clock, Search, LogOut, Languages, Moon, Sun } from 'lucide-react';
+import { getNotebooks, saveNotebook } from '@/app/_actions/notebook';
+import { Loader2, Plus, FileCode, Clock, Search, LogOut, Languages, Moon, Sun, Settings } from 'lucide-react';
 
 const dashboardT = {
   pt: {
@@ -47,15 +47,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     setMounted(true);
-    const savedUser = localStorage.getItem('tslab_user');
+    checkSession(); // Verifica sessão via API, não LocalStorage
+  }, []);
 
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-      fetchNotebooks();
-    } else {
+  const checkSession = async () => {
+    try {
+      // Pergunta ao servidor quem sou eu baseado no cookie HTTP-Only
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+        fetchNotebooks();
+      } else {
+        setLoading(false); // Não logado
+      }
+    } catch (error) {
+      console.error("Erro de sessão:", error);
       setLoading(false);
     }
-  }, []);
+  };
 
   const toggleLang = () => {
     setLang(prev => prev === 'pt' ? 'en' : 'pt');
@@ -79,21 +89,28 @@ export default function Dashboard() {
 
   const handleLogin = (loggedUser: any) => {
     setUser(loggedUser);
-    localStorage.setItem('tslab_user', JSON.stringify(loggedUser));
+    // NÃO SALVAMOS MAIS NO LOCALSTORAGE
     fetchNotebooks();
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setUser(null);
+      setNotebooks([]);
+    } catch (error) {
+      console.error("Erro ao sair", error);
+    }
   };
 
   const handleCreateNotebook = async () => {
     if (!user) return;
 
-    // Verificação de segurança: garante que temos o ID antes de tentar salvar no banco
-    if (!user.id && !user.sub) {
-      console.error("User ID faltando. Faça login novamente.");
-      alert("Sessão inválida. Por favor, saia e entre novamente.");
+    if (!user.id) {
+      alert("Sessão inválida. Recarregue a página.");
       return;
     }
 
-    // Nome padrão automático (sem prompt)
     const title = lang === 'pt' ? "Notebook sem título" : "Untitled notebook";
     const newId = crypto.randomUUID();
 
@@ -102,7 +119,7 @@ export default function Dashboard() {
       name: title,
       cells: [],
       theme: 'light',
-      userId: user.id || user.sub
+      userId: user.id
     };
 
     try {
@@ -118,8 +135,13 @@ export default function Dashboard() {
     nb.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!user) {
+  if (!user && !loading) {
     return <Auth onLogin={handleLogin} lang={lang} onToggleLang={toggleLang} />;
+  }
+
+  // Estado de loading inicial enquanto verifica a sessão
+  if (loading && !user) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"><Loader2 className="animate-spin text-blue-600" /></div>;
   }
 
   return (
@@ -133,33 +155,28 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3 sm:gap-6">
             <div className="flex items-center gap-3 border-r border-slate-200 dark:border-slate-800 pr-4 sm:pr-6">
-              <button
-                onClick={toggleLang}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-blue-600 text-[10px] font-black hover:scale-105 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-sm cursor-pointer"
-                title="Mudar idioma"
-              >
+              <button onClick={toggleLang} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-blue-600 text-[10px] font-black hover:scale-105 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-sm cursor-pointer">
                 <Languages size={14} /> {lang.toUpperCase()}
               </button>
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 dark:hover:text-yellow-400 transition-all shadow-sm cursor-pointer"
-                aria-label="Toggle Theme"
-              >
+              <button onClick={toggleTheme} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 dark:hover:text-yellow-400 transition-all shadow-sm cursor-pointer">
                 {mounted ? (resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />) : <div className="w-4 h-4" />}
               </button>
             </div>
             <div className="hidden md:flex flex-col items-end mr-1">
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{user.name}</span>
-              <div className="flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{t.pro}</span>
-              </div>
+              <Link href="/settings" className="group/profile flex flex-col items-end cursor-pointer">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200 group-hover/profile:text-blue-600 transition-colors">
+                    {user.name}
+                  </span>
+                  <Settings size={12} className="text-slate-400 opacity-0 group-hover/profile:opacity-100 transition-opacity" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{t.pro}</span>
+                </div>
+              </Link>
             </div>
-            <button
-              onClick={() => { localStorage.removeItem('tslab_user'); setUser(null); }}
-              className="p-2.5 bg-slate-100 dark:bg-slate-900 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 rounded-xl border border-transparent hover:border-red-200 dark:hover:border-red-900/30 transition-all shadow-sm group cursor-pointer"
-              title="Sair"
-            >
+            <button onClick={handleLogout} className="p-2.5 bg-slate-100 dark:bg-slate-900 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 rounded-xl border border-transparent hover:border-red-200 dark:hover:border-red-900/30 transition-all shadow-sm group cursor-pointer" title="Sair">
               <LogOut size={18} className="group-hover:-translate-x-0.5 transition-transform" />
             </button>
           </div>
@@ -173,15 +190,10 @@ export default function Dashboard() {
           </div>
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-            <input
-              type="text"
-              placeholder={t.search}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none w-full md:w-72 shadow-sm transition-all"
-            />
+            <input type="text" placeholder={t.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none w-full md:w-72 shadow-sm transition-all" />
           </div>
         </div>
+
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4 text-slate-500 animate-pulse">
             <Loader2 className="animate-spin text-blue-600" size={32} />
@@ -189,10 +201,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <button
-              onClick={handleCreateNotebook}
-              className="group relative flex flex-col items-center justify-center h-[220px] border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl hover:bg-white dark:hover:bg-slate-900 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 cursor-pointer"
-            >
+            <button onClick={handleCreateNotebook} className="group relative flex flex-col items-center justify-center h-[220px] border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl hover:bg-white dark:hover:bg-slate-900 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 cursor-pointer">
               <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 group-hover:border-blue-500/30 group-hover:bg-blue-600 flex items-center justify-center mb-4 transition-all duration-300 shadow-sm group-hover:scale-110">
                 <Plus className="text-slate-400 group-hover:text-white" size={28} />
               </div>
@@ -200,42 +209,28 @@ export default function Dashboard() {
               <span className="text-xs font-medium text-slate-400 mt-1">{t.environment}</span>
             </button>
             {filteredNotebooks.map((nb) => (
-              <Link
-                key={nb.id}
-                href={`/notebook/${nb.id}`}
-                className="group flex flex-col h-[220px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 hover:border-blue-500/30 dark:hover:border-blue-500/30 hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
-              >
+              <Link key={nb.id} href={`/notebook/${nb.id}`} className="group flex flex-col h-[220px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 hover:border-blue-500/30 dark:hover:border-blue-500/30 hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent dark:from-blue-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 <div className="flex items-start justify-between mb-6 relative z-10">
                   <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-blue-600 border border-slate-100 dark:border-slate-700 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-500 transition-all duration-300">
                     <FileCode size={22} />
                   </div>
-                  <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800">
-                    {nb.id.slice(0, 4)}
-                  </span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800">{nb.id.slice(0, 4)}</span>
                 </div>
                 <div className="flex-1 relative z-10">
-                  <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate mb-1.5 transition-colors">
-                    {nb.name || t.untitled}
-                  </h2>
-                  <p className="text-xs font-medium text-slate-500 line-clamp-2">
-                    Notebook TypeScript.
-                  </p>
+                  <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate mb-1.5 transition-colors">{nb.name || t.untitled}</h2>
+                  <p className="text-xs font-medium text-slate-500 line-clamp-2">Notebook TypeScript.</p>
                 </div>
                 <div className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-xs font-medium text-slate-400 relative z-10">
                   <Clock size={12} />
-                  <span>
-                    {new Date(nb.updated_at).toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US')}
-                  </span>
+                  <span>{new Date(nb.updated_at).toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US')}</span>
                 </div>
               </Link>
             ))}
           </div>
         )}
         {!loading && notebooks.length === 0 && (
-          <div className="text-center mt-20 text-slate-400">
-            <p className="font-medium">{t.empty}</p>
-          </div>
+          <div className="text-center mt-20 text-slate-400"><p className="font-medium">{t.empty}</p></div>
         )}
       </main>
     </div>
