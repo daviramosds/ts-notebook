@@ -1,10 +1,10 @@
 # Compilação de arquivos de `.`
 
 
-**Gerado em:** 28/12/2025 às 20:28:15  
+**Gerado em:** 28/12/2025 às 20:58:21  
 
 
-**ISO:** `2025-12-28T20:28:15.109682`
+**ISO:** `2025-12-28T20:58:21.474716`
 
 
 > Export automático.
@@ -57,9 +57,7 @@
 
 │   ├── database-manager.ts
 
-│   ├── env.ts
-
-│   └── prisma-browser.ts
+│   └── env.ts
 
 ├── next-env.d.ts
 
@@ -152,8 +150,11 @@ next-env.d.ts
 
 ```
 
+@plugin "tailwindcss-animate";
 @import "tailwindcss";
-/* REMOVA ESTA LINHA: @plugin "tailwindcss-animate"; */
+/* --- A CORREÇÃO ESTÁ AQUI EMBAIXO --- */
+/* Isso força o Tailwind a ativar o 'dark:' quando encontrar a classe .dark no HTML */
+@custom-variant dark (&:where(.dark, .dark *));
 @theme {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -162,7 +163,7 @@ next-env.d.ts
   --background: #ffffff;
   --foreground: #171717;
 }
-/* Modo Escuro Manual */
+/* Modo Escuro Manual (Variáveis CSS) */
 .dark {
   --background: #020617;
   --foreground: #ededed;
@@ -207,6 +208,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
+        suppressHydrationWarning 
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 dark:bg-slate-950`}
       >
         <Providers>
@@ -228,8 +230,11 @@ export default function RootLayout({
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, ArrowLeft, Save, Play, Moon, Sun } from 'lucide-react';
-import { useTheme } from 'next-themes'; 
+import {
+  Plus, ArrowLeft, Save, Moon, Sun, Cloud,
+  CheckCircle2, ChevronRight, AlertCircle
+} from 'lucide-react';
+import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
 import { notebookService, getDbConfig } from '@/lib/database-manager';
 import { compileTS, executeJS } from '@/lib/compiler';
@@ -237,12 +242,16 @@ export default function NotebookPage() {
   const params = useParams();
   const router = useRouter();
   const notebookId = params.id as string;
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [cells, setCells] = useState<any[]>([]);
   const [title, setTitle] = useState('Carregando...');
   const [user, setUser] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    setMounted(true);
     const savedUser = localStorage.getItem('tslab_user');
     if (!savedUser) {
       router.push('/');
@@ -260,6 +269,8 @@ export default function NotebookPage() {
         setTitle(data.name);
         const content = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
         setCells(content.cells || []);
+        setLastSaved(new Date(data.updated_at));
+        setHasUnsavedChanges(false);
       }
     } catch (err) {
       console.error("Erro ao carregar", err);
@@ -274,11 +285,10 @@ export default function NotebookPage() {
         id: notebookId,
         name: title,
         cells: cells,
-        theme: theme 
+        theme: resolvedTheme
       });
-      const btn = document.getElementById('save-btn');
-      if (btn) btn.style.color = '
-      setTimeout(() => { if (btn) btn.style.color = ''; }, 2000);
+      setLastSaved(new Date());
+      setHasUnsavedChanges(false);
     } catch (err) {
       alert('Erro ao salvar');
     } finally {
@@ -312,6 +322,10 @@ export default function NotebookPage() {
       setCells([...newCells]);
     }
   };
+  const handleTitleChange = (val: string) => {
+    setTitle(val);
+    setHasUnsavedChanges(true);
+  };
   const addCell = (type: 'code' | 'markdown') => {
     const newCell = {
       id: crypto.randomUUID(),
@@ -321,12 +335,26 @@ export default function NotebookPage() {
       output: null
     };
     setCells([...cells, newCell]);
+    setHasUnsavedChanges(true);
   };
   const updateCell = (id: string, content: string) => {
     setCells(cells.map(c => c.id === id ? { ...c, content } : c));
+    setHasUnsavedChanges(true);
   };
   const deleteCell = (id: string) => {
     setCells(cells.filter(c => c.id !== id));
+    setHasUnsavedChanges(true);
+  };
+  const handleMoveCell = (id: string, direction: 'up' | 'down') => {
+    const index = cells.findIndex(c => c.id === id);
+    if (index === -1) return;
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === cells.length - 1) return;
+    const newCells = [...cells];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    [newCells[index], newCells[targetIndex]] = [newCells[targetIndex], newCells[index]];
+    setCells(newCells);
+    setHasUnsavedChanges(true);
   };
   const onDragEnd = (result: any) => {
     if (!result.destination) return;
@@ -334,59 +362,95 @@ export default function NotebookPage() {
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
     setCells(items);
+    setHasUnsavedChanges(true);
   };
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-[
       {}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={() => router.push('/')} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500">
-            <ArrowLeft size={20} />
-          </button>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="bg-transparent font-bold text-lg outline-none text-slate-800 dark:text-slate-100 w-full md:w-auto"
-          />
-        </div>
-        <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-[
+        <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
           {}
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button
-            id="save-btn"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-          >
-            <Save size={16} /> {isSaving ? 'SALVANDO...' : 'SALVAR'}
-          </button>
+          <div className="flex items-center gap-2 mr-4">
+            <button
+              onClick={() => router.push('/')}
+              className="p-2 -ml-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+            <div className="flex flex-col justify-center">
+              <div className="flex items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                <span>Dashboard</span>
+                <ChevronRight size={10} className="mx-1" />
+                <span>Notebook</span>
+              </div>
+              <input
+                value={title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                className="bg-transparent font-bold text-sm md:text-base outline-none text-slate-800 dark:text-slate-200 placeholder-slate-400 min-w-[200px]"
+                placeholder="Nome do Notebook"
+              />
+            </div>
+          </div>
+          {}
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-2 text-xs font-medium mr-2 transition-all">
+              {isSaving ? (
+                <div className="flex items-center gap-2 text-blue-500">
+                  <Cloud size={14} className="animate-pulse" />
+                  <span>Salvando...</span>
+                </div>
+              ) : hasUnsavedChanges ? (
+                <div className="flex items-center gap-2 text-amber-500 animate-in fade-in">
+                  <AlertCircle size={14} />
+                  <span>Alterações pendentes</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-slate-400">
+                  <CheckCircle2 size={14} className="text-green-500" />
+                  <span className="opacity-70">Salvo {lastSaved && `às ${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</span>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+            >
+              {mounted && (resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />)}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving || (!hasUnsavedChanges && !isSaving)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg ${hasUnsavedChanges
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 hover:scale-105 cursor-pointer'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-default opacity-70'
+                }`}
+            >
+              <Save size={16} />
+              <span className="hidden sm:inline">SALVAR</span>
+            </button>
+          </div>
         </div>
       </header>
-      {}
-      <main className="max-w-4xl mx-auto p-4 space-y-4 mt-4">
+      <main className="max-w-4xl mx-auto p-4 space-y-4 mt-8">
         <DragDropContext onDragEnd={onDragEnd}>
           <Droppable droppableId="cells">
             {(provided) => (
-              <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
+              <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-6">
                 {cells.map((cell, index) => (
                   <Draggable key={cell.id} draggableId={cell.id} index={index}>
                     {(provided) => (
-                      <div ref={provided.innerRef} {...provided.draggableProps} className="mb-4">
+                      <div ref={provided.innerRef} {...provided.draggableProps} className="mb-6">
                         <Cell
                           cell={cell}
-                          theme={theme === 'dark' ? 'dark' : 'light'}
-                          lang="pt" 
+                          theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
+                          lang="pt"
                           dragHandleProps={provided.dragHandleProps}
                           onUpdate={updateCell}
                           onDelete={deleteCell}
                           onExecute={handleExecute}
                           onSave={handleSave}
-                          onMove={() => { }}
+                          onMove={handleMoveCell}
                           onToggleCollapse={(id) => setCells(cells.map(c => c.id === id ? { ...c, isCollapsed: !c.isCollapsed } : c))}
                         />
                       </div>
@@ -398,13 +462,12 @@ export default function NotebookPage() {
             )}
           </Droppable>
         </DragDropContext>
-        {}
-        <div className="flex justify-center gap-4 py-8 opacity-50 hover:opacity-100 transition-opacity">
-          <button onClick={() => addCell('code')} className="flex items-center gap-2 px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold hover:scale-105 transition-transform">
-            <Plus size={14} /> Código TS
+        <div className="flex justify-center gap-4 py-12 opacity-60 hover:opacity-100 transition-opacity">
+          <button onClick={() => addCell('code')} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-lg transition-all cursor-pointer">
+            <Plus size={14} /> Adicionar Código
           </button>
-          <button onClick={() => addCell('markdown')} className="flex items-center gap-2 px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold hover:scale-105 transition-transform">
-            <Plus size={14} /> Markdown
+          <button onClick={() => addCell('markdown')} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold hover:border-blue-500 hover:text-blue-500 hover:shadow-lg transition-all cursor-pointer">
+            <Plus size={14} /> Adicionar Texto
           </button>
         </div>
       </main>
@@ -648,7 +711,7 @@ export default function Dashboard() {
 'use client';
 import React, { useState } from 'react';
 import { X, Settings, Link as LinkIcon, ShieldCheck } from 'lucide-react';
-import { getDbConfig, saveDbConfig, DbConfig } from '../../lib/database-manager';
+import { getDbConfig, saveDbConfig, DbConfig } from '@/lib/database-manager';
 interface AiSidebarProps {
   isOpen: boolean;
   onClose: () => void;
@@ -905,9 +968,9 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Editor from './Editor';
-import { 
-  Play, Trash2, ChevronUp, ChevronDown, Edit3, Eye, 
-  ChevronRight, GripVertical, Loader2 
+import {
+  Play, Trash2, ChevronUp, ChevronDown, Edit3, Eye,
+  ChevronRight, GripVertical, Loader2
 } from 'lucide-react';
 interface CellProps {
   cell: any;
@@ -927,7 +990,7 @@ const cellTranslations = {
     console: 'Console Output',
     edit: 'Editar',
     view: 'Visualizar',
-    placeholder: 'Escreva algo aqui...',
+    placeholder: 'Clique para editar o Markdown...',
     error: 'Erro de Execução'
   },
   en: {
@@ -935,13 +998,14 @@ const cellTranslations = {
     console: 'Console Output',
     edit: 'Edit',
     view: 'View',
-    placeholder: 'Write something here...',
+    placeholder: 'Click to edit Markdown...',
     error: 'Execution Error'
   }
 };
 const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdate, onDelete, onExecute, onSave, onMove, onToggleCollapse }) => {
   const [isEditingMarkdown, setIsEditingMarkdown] = useState(cell.type === 'markdown' && !cell.content);
   const t = cellTranslations[lang];
+  const isDark = theme === 'dark';
   const handleDelete = () => {
     if (window.confirm(t.confirmDelete)) {
       onDelete(cell.id);
@@ -951,11 +1015,9 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
     if (!cell.output || cell.isCollapsed) return null;
     const { logs, error, result } = cell.output;
     if ((!logs || logs.length === 0) && !error && result === undefined) return null;
-    const isDark = theme === 'dark';
     return (
-      <div className={`mt-4 p-4 rounded-lg border font-mono text-sm overflow-x-auto shadow-inner transition-colors duration-200 ${
-        isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-800'
-      }`}>
+      <div className={`mt-4 p-4 rounded-lg border font-mono text-sm overflow-x-auto shadow-inner transition-colors duration-200 ${isDark ? 'bg-[
+        }`}>
         <div className={`flex items-center justify-between mb-2 pb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
           <span className="text-[10px] font-bold tracking-widest uppercase opacity-50">{t.console}</span>
         </div>
@@ -969,7 +1031,7 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
           </div>
         )}
         {error && (
-          <div className="text-red-600 dark:text-red-400 mt-1 whitespace-pre-wrap border-l-2 border-red-500 pl-3 bg-red-500/10 p-2 rounded">
+          <div className="text-red-500 mt-1 whitespace-pre-wrap border-l-2 border-red-500 pl-3 bg-red-500/10 p-2 rounded">
             <span className="font-bold uppercase text-[10px] block mb-1">{t.error}</span>
             {error}
           </div>
@@ -978,42 +1040,59 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
     );
   };
   return (
-    <div className={`group relative bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 transition-all ${cell.isCollapsed ? 'opacity-80' : 'min-h-[160px]'} flex`}>
-      <div className="w-12 flex flex-col items-center py-3 bg-slate-50 dark:bg-slate-850 border-r border-slate-200 dark:border-slate-800 shrink-0">
-        <div {...dragHandleProps} className="p-2 text-slate-300 dark:text-slate-600 hover:text-blue-500 cursor-grab active:cursor-grabbing mb-2">
+    <div className={`group relative rounded-xl shadow-sm border transition-all overflow-hidden flex ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+      } ${cell.isCollapsed ? 'opacity-80' : 'min-h-[160px]'}`}>
+      {}
+      <div className={`w-12 flex flex-col items-center py-3 border-r shrink-0 transition-colors ${isDark ? 'bg-[
+        }`}>
+        <div {...dragHandleProps} className={`p-2 cursor-grab active:cursor-grabbing mb-2 transition-colors ${isDark ? 'text-slate-600 hover:text-blue-500' : 'text-slate-300 hover:text-blue-500'
+          }`}>
           <GripVertical size={18} />
         </div>
+        {}
         {!cell.isCollapsed && cell.type === 'code' && (
-          <button 
-            onClick={() => onExecute(cell.id)} 
-            disabled={cell.isExecuting} 
-            className={`p-2 rounded-full transition-all mb-2 ${
-              cell.isExecuting 
-                ? 'text-blue-500 bg-blue-100 dark:bg-blue-900/30 scale-110 animate-pulse' 
-                : 'text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 hover:scale-110 active:scale-95'
-            }`}
+          <button
+            onClick={() => onExecute(cell.id)}
+            disabled={cell.isExecuting}
+            className={`p-2 rounded-full mb-2 group-play relative
+              transition-all duration-100 ease-in-out
+              active:scale-75 active:bg-green-500/20  
+              ${cell.isExecuting
+                ? 'text-blue-500 bg-blue-100 dark:bg-blue-900/30 cursor-wait'
+                : isDark
+                  ? 'text-green-500 hover:bg-green-900/30 hover:text-green-400 cursor-pointer' 
+                  : 'text-green-600 hover:bg-green-50 cursor-pointer' 
+              }`}
+            title="Executar Célula (Shift + Enter)"
           >
-            {cell.isExecuting ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
+            {cell.isExecuting ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Play size={18} fill="currentColor" className="ml-0.5" />
+            )}
           </button>
         )}
-        <button onClick={() => onMove(cell.id, 'up')} className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded"><ChevronUp size={16} /></button>
-        <button onClick={() => onMove(cell.id, 'down')} className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded mt-0.5"><ChevronDown size={16} /></button>
+        <button onClick={() => onMove(cell.id, 'up')} className={`p-1.5 rounded transition-colors cursor-pointer active:scale-90 ${isDark ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-200'}`}><ChevronUp size={16} /></button>
+        <button onClick={() => onMove(cell.id, 'down')} className={`p-1.5 rounded mt-0.5 transition-colors cursor-pointer active:scale-90 ${isDark ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-200'}`}><ChevronDown size={16} /></button>
         <div className="flex-grow" />
-        <button onClick={handleDelete} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={18} /></button>
+        <button onClick={handleDelete} className={`p-2 rounded-full mb-1 opacity-0 group-hover:opacity-100 transition-all cursor-pointer active:scale-75 ${isDark ? 'text-red-400 hover:bg-red-900/30 hover:text-red-300' : 'text-red-500 hover:bg-red-50'
+          }`}><Trash2 size={18} /></button>
       </div>
+      {}
       <div className="flex-1 p-4 min-w-0">
         <div className="flex justify-between items-center mb-2">
-           <div className="flex items-center gap-2 overflow-hidden">
-             <button onClick={() => onToggleCollapse(cell.id)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors text-slate-400">
-               {cell.isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-             </button>
-             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">{cell.type}</span>
-           </div>
-           {!cell.isCollapsed && cell.type === 'markdown' && (
-             <button onClick={() => setIsEditingMarkdown(!isEditingMarkdown)} className="text-xs font-medium flex items-center gap-1.5 px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 rounded-md">
-                {isEditingMarkdown ? <><Eye size={12}/> {t.view}</> : <><Edit3 size={12}/> {t.edit}</>}
-             </button>
-           )}
+          <div className="flex items-center gap-2 overflow-hidden">
+            <button onClick={() => onToggleCollapse(cell.id)} className={`p-1 rounded transition-colors cursor-pointer active:scale-90 ${isDark ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}>
+              {cell.isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+            </button>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 select-none">{cell.type}</span>
+          </div>
+          {!cell.isCollapsed && cell.type === 'markdown' && (
+            <button onClick={() => setIsEditingMarkdown(!isEditingMarkdown)} className={`text-xs font-medium flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors cursor-pointer active:scale-95 ${isDark ? 'bg-slate-800 text-slate-400 hover:text-slate-100' : 'bg-slate-100 text-slate-500 hover:text-slate-900'
+              }`}>
+              {isEditingMarkdown ? <><Eye size={12} /> {t.view}</> : <><Edit3 size={12} /> {t.edit}</>}
+            </button>
+          )}
         </div>
         {!cell.isCollapsed && (
           <div className="animate-in fade-in slide-in-from-top-1 duration-200">
@@ -1027,8 +1106,9 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
                 {isEditingMarkdown ? (
                   <Editor value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
                 ) : (
-                  <div className="prose prose-slate dark:prose-invert max-w-none cursor-pointer p-3 rounded-lg hover:bg-slate-50/50 dark:hover:bg-white/5 transition-all" onClick={() => setIsEditingMarkdown(true)}>
-                    {cell.content ? <ReactMarkdown>{cell.content}</ReactMarkdown> : <span className="italic text-slate-400">{t.placeholder}</span>}
+                  <div className={`prose max-w-none cursor-pointer p-3 rounded-lg transition-all border border-transparent ${isDark ? 'prose-invert hover:bg-white/5 hover:border-slate-800' : 'prose-slate hover:bg-slate-50 hover:border-slate-200'
+                    }`} onClick={() => setIsEditingMarkdown(true)}>
+                    {cell.content ? <ReactMarkdown>{cell.content}</ReactMarkdown> : <span className="italic text-slate-500 opacity-50 select-none">{t.placeholder}</span>}
                   </div>
                 )}
               </div>
@@ -1067,7 +1147,7 @@ export default function CodeEditor(props: EditorProps) {
 ```tsx
 
 'use client';
-import React, { useState, useRef, Suspense, lazy, startTransition } from 'react';
+import React, { useState, useRef, Suspense, lazy, useEffect, useCallback } from 'react';
 const MonacoEditor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.Editor }))) as any;
 interface EditorProps {
   value: string;
@@ -1078,86 +1158,102 @@ interface EditorProps {
   language: string;
 }
 const EditorFallback = () => (
-  <div className="h-[60px] bg-slate-100 dark:bg-slate-900 animate-pulse rounded-md flex items-center justify-center text-xs text-slate-400 font-mono">
-    Loading Editor...
+  <div className="h-full min-h-[60px] flex items-center justify-center text-xs text-slate-400 animate-pulse">
+    Carregando...
   </div>
 );
 export default function Editor({ value, onChange, onExecute, onSave, theme, language }: EditorProps) {
-  const [editorHeight, setEditorHeight] = useState(60);
+  const [isReady, setIsReady] = useState(false);
+  const [editorHeight, setEditorHeight] = useState(60); 
+  const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
-  const handleEditorMount = (editor: any, monaco: any) => {
-    editorRef.current = editor;
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
-      onExecute();
-    });
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      if (onSave) onSave();
-    });
-    const domNode = editor.getDomNode();
-    if (domNode) {
-      let spacePressed = false;
-      domNode.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.code === 'Space') spacePressed = true;
-        if (e.code === 'Enter' && spacePressed) {
-          e.preventDefault();
-          onExecute();
-        }
-      });
-      domNode.addEventListener('keyup', (e: KeyboardEvent) => {
-        if (e.code === 'Space') spacePressed = false;
-      });
-    }
-    const contentHeight = Math.max(60, editor.getContentHeight());
-    startTransition(() => {
-      setEditorHeight(contentHeight);
-    });
-    editor.onDidContentSizeChange((e: any) => {
-      if (e.contentHeightChanged) {
-        startTransition(() => {
-          setEditorHeight(Math.max(60, e.contentHeight));
-        });
+  const isMounted = useRef(false);
+  useEffect(() => {
+    isMounted.current = true;
+    const timer = setTimeout(() => {
+      if (isMounted.current) setIsReady(true);
+    }, 150); 
+    return () => {
+      isMounted.current = false;
+      clearTimeout(timer);
+      if (editorRef.current) {
+        try {
+          editorRef.current.dispose();
+        } catch (e) { }
+        editorRef.current = null;
       }
+    };
+  }, []);
+  const updateLayout = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor || !isMounted.current) return;
+    try {
+      const model = editor.getModel();
+      if (!model || model.isDisposed()) return;
+      editor.layout();
+      const contentHeight = Math.max(60, editor.getContentHeight());
+      setEditorHeight(prev => (Math.abs(prev - contentHeight) > 2 ? contentHeight : prev));
+    } catch (e) {
+    }
+  }, []);
+  const handleEditorMount = (editor: any, monaco: any) => {
+    if (!isMounted.current) return;
+    editorRef.current = editor;
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, onExecute);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave && onSave());
+    const changeListener = editor.onDidContentSizeChange(updateLayout);
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateLayout);
     });
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    window.requestAnimationFrame(updateLayout);
+    return () => {
+      changeListener.dispose();
+      resizeObserver.disconnect();
+    };
   };
   return (
-    <div className="border rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-      <Suspense fallback={<EditorFallback />}>
-        <MonacoEditor
-          height={`${editorHeight}px`}
-          language={language}
-          value={value}
-          theme={theme === 'dark' ? 'vs-dark' : 'light'}
-          onChange={(val: string) => onChange(val || '')}
-          onMount={handleEditorMount}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            padding: { top: 12, bottom: 12 },
-            lineNumbers: 'on',
-            wordWrap: 'on',
-            scrollbar: {
-              vertical: 'hidden',
-              horizontal: 'auto',
-              handleMouseWheel: false,
-            },
-            fixedOverflowWidgets: true,
-            suggest: {
-              showMethods: true,
-              showFunctions: true,
-              showVariables: true,
-              showConstants: true,
-            },
-            glyphMargin: false,
-            folding: false,
-            lineDecorationsWidth: 10,
-            lineNumbersMinChars: 3,
-            contextmenu: false,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          }}
-        />
-      </Suspense>
+    <div
+      ref={containerRef}
+      className="border rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-[
+      style={{ minHeight: '60px' }}
+    >
+      {!isReady ? (
+        <EditorFallback />
+      ) : (
+        <Suspense fallback={<EditorFallback />}>
+          <MonacoEditor
+            height={`${editorHeight}px`} 
+            language={language}
+            value={value}
+            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            onChange={(val: string) => onChange(val || '')}
+            onMount={handleEditorMount}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              scrollBeyondLastLine: false,
+              automaticLayout: false, 
+              padding: { top: 12, bottom: 12 },
+              lineNumbers: 'on',
+              wordWrap: 'on',
+              scrollbar: {
+                vertical: 'hidden',
+                horizontal: 'auto',
+                handleMouseWheel: false,
+              },
+              overviewRulerLanes: 0,
+              hideCursorInOverviewRuler: true,
+              overviewRulerBorder: false,
+              fixedOverflowWidgets: true,
+              contextmenu: false,
+              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -1424,15 +1520,6 @@ export const ENV = {
 ```
 
 
-## lib\prisma-browser.ts
-
-```ts
-
-
-
-```
-
-
 ## next-env.d.ts
 
 ```ts
@@ -1475,6 +1562,7 @@ export default nextConfig;
     "@hello-pangea/dnd": "^18.0.1",
     "@monaco-editor/react": "^4.7.0",
     "@supabase/supabase-js": "^2.89.0",
+    "@tailwindcss/typography": "^0.5.19",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
@@ -1482,6 +1570,7 @@ export default nextConfig;
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "sucrase": "^3.35.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7"
@@ -1505,7 +1594,7 @@ export default nextConfig;
 
 ## pnpm-lock.yaml
 
-- **Arquivo ignorado** (163.23 KB)
+- **Arquivo ignorado** (171.25 KB)
 
 
 ## pnpm-workspace.yaml
@@ -1668,17 +1757,10 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## tsconfig.tsbuildinfo
 
-- **Arquivo ignorado** (144.25 KB)
+- **Arquivo ignorado** (144.07 KB)
 
 
 # Verificação de TypeScript
 
 
-```
-
-components/AiSidebar.tsx(4,53): error TS2307: Cannot find module '../../lib/database-manager' or its corresponding type declarations.
-
-
-
-
-```
+Nenhum erro encontrado.
