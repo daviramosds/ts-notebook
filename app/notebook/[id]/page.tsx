@@ -7,7 +7,7 @@ import { Plus, ArrowLeft, Save, Moon, Sun, Cloud, CheckCircle2, AlertCircle, Loa
 import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
 import { getNotebook, saveNotebook } from '@/app/_actions/notebook';
-import { compileTS, executeJS } from '@/lib/compiler';
+import { compileTS, executeCode, CellLanguage } from '@/lib/compiler';
 
 export default function NotebookPage() {
   const params = useParams();
@@ -105,19 +105,29 @@ export default function NotebookPage() {
     newCells[cellIndex].output = null;
     setCells([...newCells]);
 
+    const cell = newCells[cellIndex];
+    const cellLanguage: CellLanguage = cell.language || 'typescript';
+
+    // Build previous context for TS/JS (Python doesn't share context)
     let previousCode = '';
-    for (let i = 0; i < cellIndex; i++) {
-      if (cells[i].type === 'code') {
-        try {
-          previousCode += compileTS(cells[i].content) + ';\n';
-        } catch (e) { }
+    if (cellLanguage !== 'python') {
+      for (let i = 0; i < cellIndex; i++) {
+        const prevCell = cells[i];
+        if (prevCell.type === 'code' && (prevCell.language || 'typescript') !== 'python') {
+          try {
+            const lang = prevCell.language || 'typescript';
+            if (lang === 'typescript') {
+              previousCode += compileTS(prevCell.content) + ';\n';
+            } else {
+              previousCode += prevCell.content + ';\n';
+            }
+          } catch (e) { }
+        }
       }
     }
 
     try {
-      const cell = newCells[cellIndex];
-      const jsCode = compileTS(cell.content);
-      const output = await executeJS(jsCode, previousCode);
+      const output = await executeCode(cell.content, cellLanguage, previousCode);
       newCells[cellIndex].output = output;
     } catch (err: any) {
       newCells[cellIndex].output = { error: err.message, logs: [] };
@@ -133,8 +143,20 @@ export default function NotebookPage() {
   };
 
   const addCell = (type: 'code' | 'markdown') => {
-    const newCell = { id: crypto.randomUUID(), type, content: '', isCollapsed: false, output: null };
+    const newCell = {
+      id: crypto.randomUUID(),
+      type,
+      content: '',
+      isCollapsed: false,
+      output: null,
+      language: type === 'code' ? 'typescript' as CellLanguage : undefined
+    };
     setCells([...cells, newCell]);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleLanguageChange = (id: string, language: CellLanguage) => {
+    setCells(cells.map(c => c.id === id ? { ...c, language, output: null } : c));
     setHasUnsavedChanges(true);
   };
 
@@ -324,6 +346,7 @@ export default function NotebookPage() {
                           onSave={handleSave}
                           onMove={handleMoveCell}
                           onToggleCollapse={(id) => setCells(cells.map(c => c.id === id ? { ...c, isCollapsed: !c.isCollapsed } : c))}
+                          onLanguageChange={handleLanguageChange}
                         />
                       </div>
                     )}

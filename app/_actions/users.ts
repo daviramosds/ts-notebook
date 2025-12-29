@@ -5,7 +5,6 @@ import bcrypt from 'bcrypt';
 import { cookies } from 'next/headers';
 import { verifyJWT } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { revalidatePath } from 'next/cache';
 
 // --- NOVAS AÇÕES DE USUÁRIO ---
 
@@ -28,9 +27,7 @@ export async function updateUserProfile(userId: string, name: string) {
     where: { id: userId },
     data: { name }
   });
-
-  revalidatePath('/'); // Atualiza o nome no header da home
-  revalidatePath('/settings');
+  // Removed revalidatePath to maintain SPA behavior
 }
 
 export async function changePassword(userId: string, currentPass: string, newPass: string) {

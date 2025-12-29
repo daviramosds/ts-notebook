@@ -80,6 +80,123 @@ export default function Editor({ value, onChange, onExecute, onSave, theme, lang
     editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, onExecute);
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave && onSave());
 
+    // Register Python autocomplete provider
+    if (language === 'python') {
+      monaco.languages.registerCompletionItemProvider('python', {
+        provideCompletionItems: (model: any, position: any) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
+
+          const pythonKeywords = [
+            'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+            'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
+            'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
+            'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
+            'while', 'with', 'yield'
+          ];
+
+          const pythonBuiltins = [
+            'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
+            'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
+            'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format',
+            'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
+            'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+            'list', 'locals', 'map', 'max', 'memoryview', 'min', 'next', 'object',
+            'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 'repr',
+            'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod',
+            'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip'
+          ];
+
+          const pythonModules = [
+            'math', 'random', 'json', 'os', 'sys', 're', 'datetime', 'collections',
+            'itertools', 'functools', 'operator', 'string', 'textwrap', 'struct',
+            'copy', 'pprint', 'reprlib', 'enum', 'graphlib', 'numbers', 'cmath',
+            'decimal', 'fractions', 'statistics', 'array', 'bisect', 'heapq'
+          ];
+
+          const suggestions = [
+            ...pythonKeywords.map(kw => ({
+              label: kw,
+              kind: monaco.languages.CompletionItemKind.Keyword,
+              insertText: kw,
+              range,
+            })),
+            ...pythonBuiltins.map(fn => ({
+              label: fn,
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: fn + '($0)',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'Built-in function',
+            })),
+            ...pythonModules.map(mod => ({
+              label: mod,
+              kind: monaco.languages.CompletionItemKind.Module,
+              insertText: mod,
+              range,
+              detail: 'Module',
+            })),
+            // Common snippets
+            {
+              label: 'def',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'def ${1:function_name}(${2:args}):\n\t${3:pass}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'Function definition',
+            },
+            {
+              label: 'class',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'class ${1:ClassName}:\n\tdef __init__(self${2:, args}):\n\t\t${3:pass}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'Class definition',
+            },
+            {
+              label: 'for',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'for ${1:item} in ${2:iterable}:\n\t${3:pass}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'For loop',
+            },
+            {
+              label: 'if',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'if ${1:condition}:\n\t${2:pass}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'If statement',
+            },
+            {
+              label: 'try',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'try:\n\t${1:pass}\nexcept ${2:Exception} as ${3:e}:\n\t${4:pass}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'Try/Except block',
+            },
+            {
+              label: 'with',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'with ${1:expression} as ${2:var}:\n\t${3:pass}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+              detail: 'With statement',
+            },
+          ];
+
+          return { suggestions };
+        },
+      });
+    }
+
     // Listeners
     // Atualiza altura quando o conteúdo muda (digitação)
     const changeListener = editor.onDidContentSizeChange(updateLayout);

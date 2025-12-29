@@ -1,7 +1,6 @@
 // app/actions.ts
 'use server'
 import { prisma } from "@/lib/prisma"; // Importe a instância corrigida
-import { revalidatePath } from 'next/cache'
 
 // ... (resto das importações)
 
@@ -43,6 +42,5 @@ export async function saveNotebook(data: { id: string, name: string, cells: any[
       userId: data.userId!
     }
   })
-  revalidatePath('/')
-  revalidatePath(`/notebook/${data.id}`)
+  // Removed revalidatePath to maintain SPA behavior
 }

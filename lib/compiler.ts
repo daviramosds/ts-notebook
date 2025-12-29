@@ -1,6 +1,9 @@
 import { transform } from 'sucrase';
+import { executePython } from './pyodide';
 
 // REMOVIDO: import { getDbConfig... } pois o arquivo não existe e causava erro de build.
+
+export type CellLanguage = 'typescript' | 'javascript' | 'python';
 
 export const compileTS = (tsCode: string): string => {
   try {
@@ -40,7 +43,7 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
       // Criação da função de execução isolada.
       // Removemos 'supabase' e 'rest' dos argumentos pois não temos essas configs agora.
       // Usamos 'eval' para garantir que o retorno da última linha seja capturado.
-      const executionFn = new Function('console', 'setCapture', `
+      const executionFn = new Function('console', 'setCapture', 'previousContext', `
         return (async function() {
           try {
             setCapture(false);
@@ -61,7 +64,7 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
       const setCapture = (val: boolean) => { isCapturing = val; };
 
       // Executa sem passar dependências externas quebradas
-      executionFn(customConsole, setCapture)
+      executionFn(customConsole, setCapture, previousContext)
         .then((result: any) => resolve({ logs, result }))
         .catch((error: any) => resolve({ logs, result: undefined, error: error.message || String(error) }));
 
@@ -69,4 +72,26 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
       resolve({ logs, result: undefined, error: error.message || String(error) });
     }
   });
+};
+
+// Main entry point for code execution based on language
+export const executeCode = async (
+  code: string,
+  language: CellLanguage,
+  previousContext: string = ''
+): Promise<{ logs: string[]; result: any; error?: any }> => {
+  switch (language) {
+    case 'typescript': {
+      const jsCode = compileTS(code);
+      return executeJS(jsCode, previousContext);
+    }
+    case 'javascript': {
+      return executeJS(code, previousContext);
+    }
+    case 'python': {
+      return executePython(code);
+    }
+    default:
+      return { logs: [], result: undefined, error: `Unsupported language: ${language}` };
+  }
 };
