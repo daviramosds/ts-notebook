@@ -21,7 +21,7 @@ export async function GET() {
   // Busca dados frescos no banco
   const user = await prisma.user.findUnique({
     where: { id: payload.sub as string },
-    select: { id: true, name: true, email: true } // Seleciona só o seguro
+    select: { id: true, name: true, email: true, username: true, language: true, theme: true }
   });
 
   if (!user) {

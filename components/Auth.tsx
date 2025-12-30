@@ -7,7 +7,6 @@ interface AuthProps {
   // Atualizado para aceitar o ID opcional, permitindo que o objeto completo passe
   onLogin: (user: { id?: string; name: string; email: string }) => void;
   lang: 'pt' | 'en';
-  onToggleLang?: () => void;
 }
 
 const authT = {
@@ -39,7 +38,7 @@ const authT = {
   },
 };
 
-export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
+export default function Auth({ onLogin, lang }: AuthProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [isLoading, setIsLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -123,35 +122,20 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4 font-sans transition-colors duration-500 overflow-hidden relative">
-      <div className="fixed top-8 right-8 flex gap-3 z-50">
-        <button
-          onClick={onToggleLang}
-          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-blue-600 hover:scale-110 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-xl flex items-center gap-2 text-xs font-black uppercase cursor-pointer"
-        >
-          <Languages size={20} /> {lang}
-        </button>
-        <button
-          onClick={toggleTheme}
-          className="p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 hover:scale-110 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 transition-all shadow-xl cursor-pointer"
-        >
-          {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-        </button>
-      </div>
-
-      <div className="w-full max-w-[440px] relative z-10">
-        <div className="text-center mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-[22px] text-white font-black text-3xl shadow-2xl shadow-blue-500/30 mb-6 transform hover:rotate-6">
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-900 p-4 font-sans">
+      <div className="w-full max-w-[380px] relative z-10">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-lg text-white font-mono font-bold text-xl mb-4">
             TS
           </div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-            <span className="text-blue-600">TS</span>Lab
+          <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">
+            <span className="text-blue-600">TS</span><span className="text-slate-500 dark:text-slate-400">Lab</span>
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">{t.desc}</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">{t.desc}</p>
         </div>
 
         <div
-          className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border transition-all duration-300 rounded-[40px] p-10 shadow-2xl ${error ? 'border-red-500/50 animate-shake' : 'border-slate-200 dark:border-slate-800'
+          className={`bg-slate-50 dark:bg-slate-800 border rounded-xl p-8 ${error ? 'border-red-400 dark:border-red-600' : 'border-slate-200 dark:border-slate-700'
             }`}
         >
           {error && (
@@ -161,90 +145,86 @@ export default function Auth({ onLogin, lang, onToggleLang }: AuthProps) {
             </div>
           )}
 
-          <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-[20px] mb-8">
+          <div className="flex p-1 bg-slate-200 dark:bg-slate-700 rounded-lg mb-6">
             <button
               onClick={() => setMode('signin')}
-              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all cursor-pointer hover:bg-white/50 dark:hover:bg-slate-700/50 ${mode === 'signin'
-                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl'
-                : 'text-slate-500'
+              className={`flex-1 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer ${mode === 'signin'
+                ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
             >
               {t.signin}
             </button>
             <button
               onClick={() => setMode('signup')}
-              className={`flex-1 py-3 text-[11px] font-black tracking-widest rounded-[16px] transition-all cursor-pointer hover:bg-white/50 dark:hover:bg-slate-700/50 ${mode === 'signup'
-                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-xl'
-                : 'text-slate-500'
+              className={`flex-1 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer ${mode === 'signup'
+                ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
             >
               {t.signup}
             </button>
           </div>
 
-          <form onSubmit={handleAuth} className="space-y-5">
+          <form onSubmit={handleAuth} className="space-y-4">
             {mode === 'signup' && (
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.name}</label>
-                <div className="relative group">
-                  <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t.name}</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/30 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all duration-200 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+                    className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg py-2.5 pl-10 pr-4 text-sm outline-none transition-colors dark:text-white"
                   />
                 </div>
               </div>
             )}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.email}</label>
-              <div className="relative group">
-                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t.email}</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type="email"
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/30 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-6 text-sm outline-none transition-all duration-200 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+                  className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg py-2.5 pl-10 pr-4 text-sm outline-none transition-colors dark:text-white"
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">{t.pass}</label>
-              <div className="relative group">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t.pass}</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-transparent focus:border-blue-500/30 focus:bg-white dark:focus:bg-slate-900 rounded-[20px] py-4 pl-14 pr-14 text-sm outline-none transition-all duration-200 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+                  className="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg py-2.5 pl-10 pr-10 text-sm outline-none transition-colors dark:text-white"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
                 >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
             <button
               disabled={isLoading}
-              className="group w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-[22px] shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 mt-8 relative overflow-hidden cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors mt-6 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
-                <Loader2 className="animate-spin" size={20} />
+                <Loader2 className="animate-spin" size={18} />
               ) : (
                 <>
-                  <span className="relative z-10">{mode === 'signin' ? t.btnIn : t.btnUp}</span>
-                  <ArrowRight
-                    size={20}
-                    strokeWidth={3}
-                    className="relative z-10 group-hover:translate-x-1 transition-transform"
-                  />
+                  <span>{mode === 'signin' ? t.btnIn : t.btnUp}</span>
+                  <ArrowRight size={16} />
                 </>
               )}
             </button>

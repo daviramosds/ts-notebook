@@ -72,3 +72,45 @@ export async function deleteAccount(userId: string) {
 
   // O logout será feito pelo client-side chamando a rota de logout
 }
+
+export async function updateUserPreferences(userId: string, preferences: { language?: string; theme?: string }) {
+  const authId = await getAuthenticatedUserId();
+  if (!authId || authId !== userId) {
+    throw new Error("Not authorized");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...(preferences.language && { language: preferences.language }),
+      ...(preferences.theme && { theme: preferences.theme })
+    }
+  });
+}
+
+export async function updateUsername(userId: string, username: string) {
+  const authId = await getAuthenticatedUserId();
+  if (!authId || authId !== userId) {
+    throw new Error("Not authorized");
+  }
+
+  // Validate username format (alphanumeric, underscores, 3-20 chars)
+  const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+  if (!usernameRegex.test(username)) {
+    throw new Error("Username must be 3-20 characters and contain only letters, numbers, and underscores");
+  }
+
+  // Check if username is already taken
+  const existing = await prisma.user.findUnique({
+    where: { username }
+  });
+
+  if (existing && existing.id !== userId) {
+    throw new Error("Username already taken");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { username }
+  });
+}

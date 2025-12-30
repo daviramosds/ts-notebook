@@ -1,11 +1,9 @@
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
 
-
 @import "tailwindcss";
 
-/* --- A CORREÇÃO ESTÁ AQUI EMBAIXO --- */
-/* Isso força o Tailwind a ativar o 'dark:' quando encontrar a classe .dark no HTML */
+/* Dark mode activation */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -13,20 +11,216 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ========================================
+   LIGHT MODE - Clean Developer Theme
+======================================== */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #24292f;
+  --card: #f6f8fa;
+  --card-foreground: #24292f;
+  --muted: #f6f8fa;
+  --muted-foreground: #57606a;
+  --border: #d0d7de;
+  --ring: #0969da;
+
+  /* Primary - GitHub Blue (muted) */
+  --primary: #0969da;
+  --primary-hover: #0550ae;
+  --primary-foreground: #ffffff;
+
+  /* Success - Muted Green */
+  --success: #1a7f37;
+  --success-hover: #116329;
+
+  /* Warning */
+  --warning: #9a6700;
+
+  /* Danger - Muted Red */
+  --danger: #cf222e;
+  --danger-hover: #a40e26;
+
+  /* Accent - Subtle Purple */
+  --accent: #8250df;
+  --accent-hover: #6639ba;
 }
 
-/* Modo Escuro Manual (Variáveis CSS) */
+/* ========================================
+   DARK MODE - VS Code Inspired
+======================================== */
 .dark {
-  --background: #020617;
-  --foreground: #ededed;
+  --background: #0d1117;
+  --foreground: #c9d1d9;
+  --card: #161b22;
+  --card-foreground: #c9d1d9;
+  --muted: #21262d;
+  --muted-foreground: #8b949e;
+  --border: #30363d;
+  --ring: #58a6ff;
+
+  --primary: #58a6ff;
+  --primary-hover: #79b8ff;
+  --primary-foreground: #0d1117;
+
+  --success: #3fb950;
+  --success-hover: #56d364;
+
+  --warning: #d29922;
+
+  --danger: #f85149;
+  --danger-hover: #ff7b72;
+
+  --accent: #a371f7;
+  --accent-hover: #bc8cff;
 }
 
+/* ========================================
+   BASE STYLES
+======================================== */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* ========================================
+   COLOR OVERRIDES - Professional Tones
+======================================== */
+
+/* Primary Blue - Muted */
+.text-blue-600 {
+  color: var(--primary) !important;
+}
+
+.bg-blue-600 {
+  background-color: var(--primary) !important;
+}
+
+.hover\:bg-blue-700:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+.border-blue-500 {
+  border-color: var(--primary) !important;
+}
+
+/* Success Green - Muted */
+.text-green-500,
+.text-green-600 {
+  color: var(--success) !important;
+}
+
+.bg-green-600 {
+  background-color: var(--success) !important;
+}
+
+.hover\:bg-green-700:hover {
+  background-color: var(--success-hover) !important;
+}
+
+/* Accent Purple - Subtle */
+.text-purple-600 {
+  color: var(--accent) !important;
+}
+
+.bg-purple-600 {
+  background-color: var(--accent) !important;
+}
+
+.hover\:bg-purple-700:hover {
+  background-color: var(--accent-hover) !important;
+}
+
+/* Danger Red - Professional */
+.text-red-500,
+.text-red-600 {
+  color: var(--danger) !important;
+}
+
+.bg-red-600 {
+  background-color: var(--danger) !important;
+}
+
+/* Remove flashy shadows */
+.shadow-blue-500\/30,
+.shadow-green-500\/30,
+.shadow-purple-500\/25 {
+  --tw-shadow-color: transparent !important;
+}
+
+/* ========================================
+   COMPONENT ENHANCEMENTS
+======================================== */
+
+/* Subtle focus states */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Smooth transitions */
+button,
+a {
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+/* Muted shadows */
+.shadow-sm {
+  box-shadow: 0 1px 0 rgba(27, 31, 36, 0.04) !important;
+}
+
+.shadow-xl,
+.shadow-2xl {
+  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2) !important;
+}
+
+.dark .shadow-sm {
+  box-shadow: 0 0 0 1px var(--border) !important;
+}
+
+.dark .shadow-xl,
+.dark .shadow-2xl {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Scrollbar - minimal */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--background);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* Selection */
+::selection {
+  background: rgba(9, 105, 218, 0.3);
+}
+
+.dark ::selection {
+  background: rgba(88, 166, 255, 0.3);
 }

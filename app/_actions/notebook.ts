@@ -1,27 +1,31 @@
 // app/actions.ts
 'use server'
-import { prisma } from "@/lib/prisma"; // Importe a instância corrigida
+import { prisma } from "@/lib/prisma";
 
 
-// Adicione isto em app/actions.ts
 export async function getNotebook(id: string) {
   return await prisma.notebook.findUnique({
     where: { id },
-    include: { user: true } // Opcional, se precisar de dados do usuário
+    include: { user: true }
   });
 }
 
 export async function getNotebooks() {
   return await prisma.notebook.findMany({
-    include: { user: true } // Opcional, se precisar de dados do usuário
+    include: { user: true }
   });
 }
 
+export async function getPublicNotebook(id: string) {
+  return await prisma.notebook.findUnique({
+    where: { id, isPublic: true },
+    include: { user: { select: { name: true } } }
+  });
+}
 
 export async function saveNotebook(data: { id: string, name: string, cells: any[], theme: string, userId?: string }) {
   const content = { cells: data.cells, theme: data.theme };
 
-  // Verifica se userId foi passado (idealmente viria do token de sessão seguro)
   if (!data.userId && !data.id) throw new Error("User ID required for creation");
 
   await prisma.notebook.upsert({
@@ -35,9 +39,44 @@ export async function saveNotebook(data: { id: string, name: string, cells: any[
       id: data.id,
       name: data.name,
       content: content as any,
-      // Usa o ID passado ou lança erro. Removido o MOCK_USER_ID
       userId: data.userId!
     }
   })
-  // Removed revalidatePath to maintain SPA behavior without page refreshes
+}
+
+export async function deleteNotebook(id: string) {
+  await prisma.notebook.delete({
+    where: { id }
+  });
+}
+
+export async function renameNotebook(id: string, name: string) {
+  await prisma.notebook.update({
+    where: { id },
+    data: { name, updated_at: new Date() }
+  });
+}
+
+export async function duplicateNotebook(id: string, userId: string) {
+  const original = await prisma.notebook.findUnique({ where: { id } });
+  if (!original) throw new Error("Notebook not found");
+
+  const newId = crypto.randomUUID();
+  const newNotebook = await prisma.notebook.create({
+    data: {
+      id: newId,
+      name: `${original.name} (Copy)`,
+      content: original.content as any,
+      userId: userId,
+      isPublic: false
+    }
+  });
+  return newNotebook;
+}
+
+export async function toggleNotebookPublic(id: string, isPublic: boolean) {
+  await prisma.notebook.update({
+    where: { id },
+    data: { isPublic }
+  });
 }

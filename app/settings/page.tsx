@@ -2,14 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import {
   User, Lock, Trash2, Save, Loader2,
   ShieldAlert, CheckCircle2, AlertCircle,
-  Languages, Moon, Sun, LogOut, Eye, EyeOff
+  Languages, Moon, Sun, LogOut, Eye, EyeOff, ArrowLeft
 } from 'lucide-react';
-import { updateUserProfile, changePassword, deleteAccount } from '@/app/_actions/users'
+import { updateUserProfile, changePassword, deleteAccount, updateUserPreferences, updateUsername } from '@/app/_actions/users'
 
 const settingsT = {
   pt: {
@@ -43,7 +42,20 @@ const settingsT = {
     passwordError: 'Erro ao alterar senha.',
     deleteError: 'Erro ao excluir conta.',
     user: 'Usuário',
-    logout: 'Sair'
+    logout: 'Sair',
+    preferences: 'Preferências',
+    preferencesDesc: 'Configurações de idioma e tema',
+    language: 'Idioma',
+    theme: 'Tema',
+    themeSystem: 'Sistema',
+    themeLight: 'Claro',
+    themeDark: 'Escuro',
+    username: 'Username',
+    usernamePlaceholder: 'Seu nome de usuário',
+    usernameDesc: '3-20 caracteres: letras, números, underscores',
+    usernameSuccess: 'Username atualizado!',
+    usernameError: 'Erro ao atualizar username.',
+    usernameTaken: 'Username já em uso.'
   },
   en: {
     settings: 'Settings',
@@ -76,7 +88,20 @@ const settingsT = {
     passwordError: 'Error changing password.',
     deleteError: 'Error deleting account.',
     user: 'User',
-    logout: 'Logout'
+    logout: 'Logout',
+    preferences: 'Preferences',
+    preferencesDesc: 'Language and theme settings',
+    language: 'Language',
+    theme: 'Theme',
+    themeSystem: 'System',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    username: 'Username',
+    usernamePlaceholder: 'Your username',
+    usernameDesc: '3-20 characters: letters, numbers, underscores',
+    usernameSuccess: 'Username updated!',
+    usernameError: 'Error updating username.',
+    usernameTaken: 'Username already taken.'
   }
 };
 
@@ -86,11 +111,12 @@ export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
-  const [lang, setLang] = useState<'pt' | 'en'>('pt');
+  const [lang, setLang] = useState<'pt' | 'en'>('en');
   const t = settingsT[lang];
 
   // Estados dos formulários
   const [name, setName] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
 
   // Feedback visual
@@ -110,6 +136,14 @@ export default function SettingsPage() {
         const data = await res.json();
         setUser(data.user);
         setName(data.user.name || '');
+        setUsernameInput(data.user.username || '');
+        // Apply user preferences from database
+        if (data.user.language) {
+          setLang(data.user.language as 'pt' | 'en');
+        }
+        if (data.user.theme) {
+          setTheme(data.user.theme);
+        }
       } else {
         router.push('/');
       }
@@ -117,6 +151,20 @@ export default function SettingsPage() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLanguageChange = async (newLang: 'pt' | 'en') => {
+    setLang(newLang);
+    if (user?.id) {
+      await updateUserPreferences(user.id, { language: newLang });
+    }
+  };
+
+  const handleThemeChange = async (newTheme: string) => {
+    setTheme(newTheme);
+    if (user?.id) {
+      await updateUserPreferences(user.id, { theme: newTheme });
     }
   };
 
@@ -132,6 +180,26 @@ export default function SettingsPage() {
       setUser({ ...user, name });
     } catch (err) {
       setStatus({ type: 'error', msg: t.profileError });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateUsername = async () => {
+    if (!usernameInput.trim()) return;
+    setIsSaving(true);
+    setStatus({ type: null, msg: '' });
+
+    try {
+      await updateUsername(user.id, usernameInput.trim());
+      setStatus({ type: 'success', msg: t.usernameSuccess });
+      setUser({ ...user, username: usernameInput.trim() });
+    } catch (err: any) {
+      if (err.message.includes('already taken')) {
+        setStatus({ type: 'error', msg: t.usernameTaken });
+      } else {
+        setStatus({ type: 'error', msg: t.usernameError });
+      }
     } finally {
       setIsSaving(false);
     }
@@ -202,35 +270,32 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
 
       {/* Header padrão da aplicação */}
-      <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-20 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <Link href="/" className="flex items-center cursor-pointer select-none group">
-            <span className="font-black text-2xl tracking-tight text-slate-900 dark:text-slate-100 group-hover:opacity-80 transition-opacity">
-              <span className="text-blue-600">TS</span>Lab
-            </span>
-          </Link>
-          <div className="flex items-center gap-3 sm:gap-6">
-            <div className="flex items-center gap-3 border-r border-slate-200 dark:border-slate-800 pr-4 sm:pr-6">
-              <button onClick={toggleLang} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-blue-600 text-[10px] font-black hover:scale-105 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-sm cursor-pointer">
-                <Languages size={14} /> {lang.toUpperCase()}
-              </button>
-              <button onClick={toggleTheme} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-yellow-500 dark:hover:text-yellow-400 transition-all shadow-sm cursor-pointer">
-                {mounted ? (resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />) : <div className="w-4 h-4" />}
-              </button>
+      <header className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/')}
+              className="p-2 rounded-md bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                TSLab
+              </span>
+              <span className="font-medium text-sm text-slate-800 dark:text-slate-100">{t.settings}</span>
             </div>
-            <div className="hidden md:flex flex-col items-end mr-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                  {user?.name || t.user}
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{t.settings}</span>
-              </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="hidden md:flex flex-col items-end mr-2">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {user?.name || t.user}
+              </span>
             </div>
-            <button onClick={handleLogout} className="p-2.5 bg-slate-100 dark:bg-slate-900 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 rounded-xl border border-transparent hover:border-red-200 dark:hover:border-red-900/30 transition-all shadow-sm group cursor-pointer" title={t.logout}>
-              <LogOut size={18} className="group-hover:-translate-x-0.5 transition-transform" />
+            <button onClick={handleLogout} className="p-2 rounded-md bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-800 transition-colors cursor-pointer" title={t.logout}>
+              <LogOut size={16} />
             </button>
           </div>
         </div>
@@ -248,6 +313,80 @@ export default function SettingsPage() {
             <span className="font-medium text-sm">{status.msg}</span>
           </div>
         )}
+
+        {/* Preferências / Preferences */}
+        <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600">
+              <Languages size={20} />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">{t.preferences}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t.preferencesDesc}</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {/* Language Selector */}
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-400 mb-2 ml-1">{t.language}</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleLanguageChange('en')}
+                  className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${lang === 'en'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                >
+                  🇺🇸 English
+                </button>
+                <button
+                  onClick={() => handleLanguageChange('pt')}
+                  className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${lang === 'pt'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                >
+                  🇧🇷 Português
+                </button>
+              </div>
+            </div>
+
+            {/* Theme Selector */}
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-400 mb-2 ml-1">{t.theme}</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleThemeChange('system')}
+                  className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${resolvedTheme === undefined || (!['light', 'dark'].includes(resolvedTheme || ''))
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                >
+                  {t.themeSystem}
+                </button>
+                <button
+                  onClick={() => handleThemeChange('light')}
+                  className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${resolvedTheme === 'light'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                >
+                  <Sun size={16} /> {t.themeLight}
+                </button>
+                <button
+                  onClick={() => handleThemeChange('dark')}
+                  className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${resolvedTheme === 'dark'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                >
+                  <Moon size={16} /> {t.themeDark}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Cartão de Perfil */}
         <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
@@ -271,6 +410,29 @@ export default function SettingsPage() {
                 className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-500 cursor-not-allowed opacity-70"
               />
               <p className="text-[10px] text-slate-400 mt-1 ml-1">{t.emailCantChange}</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-400 mb-1.5 ml-1">{t.username}</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-sm outline-none transition-all"
+                  placeholder={t.usernamePlaceholder}
+                  maxLength={20}
+                />
+                <button
+                  type="button"
+                  onClick={handleUpdateUsername}
+                  disabled={isSaving || usernameInput === user?.username}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Save size={16} />
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1 ml-1">{t.usernameDesc}</p>
             </div>
 
             <div>

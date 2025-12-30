@@ -8,7 +8,29 @@ export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Support login with email OR username
+    const identifier = email?.trim().toLowerCase();
+
+    let user = null;
+
+    // Check if it's an email (contains @) or username
+    if (identifier.includes('@')) {
+      user = await prisma.user.findUnique({ where: { email: identifier } });
+    } else {
+      user = await prisma.user.findUnique({ where: { username: identifier } });
+    }
+
+    // If not found by specific field, try both
+    if (!user) {
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: identifier },
+            { username: identifier }
+          ]
+        }
+      });
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
@@ -22,13 +44,13 @@ export async function POST(request: Request) {
 
     const token = await signJWT({ sub: user.id, email: user.email });
 
-    // --- MUDANÇA AQUI: Retornamos o objeto user completo (sem a senha) ---
     const response = NextResponse.json({
       message: 'Login successful',
       user: {
         id: user.id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        username: user.username
       }
     }, { status: 200 });
 

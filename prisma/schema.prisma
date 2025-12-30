@@ -14,11 +14,15 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  password  String
-  notebooks Notebook[]
+  id         String              @id @default(cuid())
+  email      String              @unique
+  username   String?             @unique
+  name       String?
+  password   String
+  language   String              @default("en")
+  theme      String              @default("system")
+  notebooks  Notebook[]
+  accessLogs NotebookAccessLog[]
 
   @@map("users")
 }
@@ -27,10 +31,48 @@ model Notebook {
   id         String   @id @default(uuid())
   name       String
   content    Json
+  isPublic   Boolean  @default(false)
   updated_at DateTime @updatedAt
 
   user   User?   @relation(fields: [userId], references: [id])
   userId String?
 
+  share NotebookShare?
+
   @@map("notebooks")
+}
+
+model NotebookShare {
+  id         String   @id @default(cuid())
+  notebookId String   @unique
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  // Access settings
+  isEnabled     Boolean   @default(true)
+  password      String? // Hashed password (null = no password)
+  expiresAt     DateTime? // null = never expires
+  accessType    String    @default("public") // "public" | "authenticated" | "restricted"
+  allowedEmails String[]  @default([]) // Only for "restricted" type
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accessLogs NotebookAccessLog[]
+
+  @@map("notebook_shares")
+}
+
+model NotebookAccessLog {
+  id      String        @id @default(cuid())
+  shareId String
+  share   NotebookShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  userId     String? // null for anonymous access
+  user       User?    @relation(fields: [userId], references: [id])
+  userEmail  String? // Store email even for anonymous
+  ipAddress  String?
+  userAgent  String?
+  accessedAt DateTime @default(now())
+
+  @@map("notebook_access_logs")
 }

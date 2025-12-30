@@ -172,3 +172,64 @@ export const executePython = async (
 export const isPyodideLoaded = (): boolean => {
   return pyodideInstance !== null;
 };
+
+export const isPyodideLoading = (): boolean => {
+  return pyodideLoading !== null && pyodideInstance === null;
+};
+
+// Install a Python package using micropip
+export const installPythonPackage = async (packageName: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const pyodide = await getPyodide();
+
+    // Load micropip if not already loaded
+    await pyodide.loadPackage('micropip');
+    const micropip = pyodide.pyimport('micropip');
+
+    // Install the package
+    await micropip.install(packageName);
+
+    return { success: true };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || `Failed to install ${packageName}`
+    };
+  }
+};
+
+// Check for matplotlib and render to base64 image
+export const renderMatplotlib = async (): Promise<string | null> => {
+  try {
+    const pyodide = await getPyodide();
+
+    // Check if matplotlib is loaded and has pending figures
+    const result = await pyodide.runPythonAsync(`
+import sys
+if 'matplotlib.pyplot' in sys.modules:
+    import matplotlib.pyplot as plt
+    import io
+    import base64
+    
+    fig = plt.gcf()
+    if fig.get_axes():
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close(fig)
+        img_base64
+    else:
+        None
+else:
+    None
+`);
+
+    if (result) {
+      return `data:image/png;base64,${result}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
