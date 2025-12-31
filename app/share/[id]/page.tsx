@@ -6,6 +6,8 @@ import { useTheme } from 'next-themes';
 import { getSharedNotebook, validateShareAccess, logShareAccess } from '@/app/_actions/share';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { Loader2, FileCode, User, Globe, ArrowLeft, Lock, AlertCircle, Clock, Shield, Eye, EyeOff, Moon, Sun, Languages } from 'lucide-react';
 import Link from 'next/link';
 
@@ -403,9 +405,19 @@ export default function SharePage() {
                       {cell.language || 'typescript'}
                     </span>
                   </div>
-                  <pre className="font-mono text-sm p-4 rounded-lg overflow-x-auto bg-slate-50 dark:bg-slate-950">
-                    <code>{cell.content}</code>
-                  </pre>
+                  <SyntaxHighlighter
+                    language={cell.language || 'typescript'}
+                    style={resolvedTheme === 'dark' ? vscDarkPlus : vs}
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem',
+                      background: resolvedTheme === 'dark' ? '#0c111b' : '#f8f9fa'
+                    }}
+                    showLineNumbers={false}
+                  >
+                    {cell.content}
+                  </SyntaxHighlighter>
                   {cell.output && (
                     <div className="mt-2 p-3 rounded-lg text-sm font-mono bg-slate-50 dark:bg-slate-950">
                       {cell.output.logs?.map((log: string, i: number) => (

@@ -1,235 +1,156 @@
-// Pyodide integration for Python execution in browser
-// Uses lazy loading to only download Pyodide when first Python cell is executed
+// Removed uuid import to use crypto.randomUUID
 
-let pyodideInstance: any = null;
-let pyodideLoading: Promise<any> | null = null;
 
-declare global {
-  interface Window {
-    loadPyodide?: (config?: { indexURL?: string }) => Promise<any>;
-  }
+// Types
+export interface PyodideResult {
+  logs: string[];
+  result: any;
+  error?: string;
+  executionTime?: number;
+  richOutputs?: Array<{ type: string; data: any }>;
 }
 
-// Check if running in browser
-const isBrowser = typeof window !== 'undefined';
+export type OutputCallback = (text: string) => void;
 
-// Helper to check if loadPyodide is available
-const isLoadPyodideAvailable = (): boolean => {
-  return isBrowser && typeof window.loadPyodide === 'function';
+// Worker Management
+let worker: Worker | null = null;
+let workerReadyPromise: Promise<void> | null = null;
+let loadingCallbacks: Array<(progress: number) => void> = [];
+
+// Execution State
+interface PendingExecution {
+  resolve: (value: PyodideResult) => void;
+  reject: (reason?: any) => void;
+  logs: string[];
+  startTime: number;
+  onOutput?: OutputCallback;
+}
+
+let pendingExecutions: Map<string, PendingExecution> = new Map();
+
+// Initialize Worker
+const initWorker = () => {
+  if (worker) return;
+
+  if (typeof window === 'undefined') return;
+
+  // Create worker using standard Vite/Next.js compatible syntax
+  worker = new Worker(new URL('./pyodide-worker.ts', import.meta.url), {
+    type: 'module',
+  });
+
+  worker.onmessage = (event) => {
+    const { type, id, stream, text, results, error, progress } = event.data;
+
+    switch (type) {
+      case 'LOADING':
+        loadingCallbacks.forEach(cb => cb(progress));
+        break;
+
+      case 'READY':
+        loadingCallbacks.forEach(cb => cb(100));
+        break;
+
+      case 'OUTPUT':
+        // Find execution and append log
+        // Note: Global stdout might not have an ID if we don't pass it in init
+        // But for specific cell execution, we hope logic flow matches.
+        // Actually, we process all executions sequentially for now or track active one.
+        // Limitation: Pyodide stdout callback doesn't carry "context".
+        // Solution: We assume the most recent/only active execution owns the output.
+        // Or we just broadcast to active execution.
+        if (pendingExecutions.size > 0) {
+          const entry = pendingExecutions.entries().next().value;
+          if (entry) {
+            const [_, exec] = entry;
+            exec.logs.push(text);
+            if (exec.onOutput) exec.onOutput(text);
+          }
+        }
+        break;
+
+      case 'RESULTS':
+        if (id && pendingExecutions.has(id)) {
+          const exec = pendingExecutions.get(id)!;
+          pendingExecutions.delete(id);
+
+          exec.resolve({
+            logs: exec.logs,
+            result: results.result,
+            richOutputs: results.richOutputs,
+            executionTime: performance.now() - exec.startTime
+          });
+        }
+        break;
+
+      case 'ERROR':
+        if (id && pendingExecutions.has(id)) {
+          const exec = pendingExecutions.get(id)!;
+          pendingExecutions.delete(id);
+
+          exec.resolve({ // Resolve with error field instead of rejecting to match previous API
+            logs: exec.logs,
+            result: undefined,
+            error: error,
+            executionTime: performance.now() - exec.startTime
+          });
+        } else {
+          console.error('Worker Global Error:', error);
+        }
+        break;
+    }
+  };
+
+  worker.postMessage({ type: 'INIT' });
 };
 
-const loadPyodideScript = (): Promise<void> => {
+// Progress Listener
+export const onLoadingProgress = (callback: (progress: number) => void) => {
+  loadingCallbacks.push(callback);
+  // Trigger immediately if we have state? 
+  // Simplified for now.
+};
+
+// Main Execute Function
+export const executePython = async (
+  code: string,
+  onOutput?: OutputCallback
+): Promise<PyodideResult> => {
+  if (!worker) {
+    initWorker();
+  }
+
+  const id = crypto.randomUUID();
+  const startTime = performance.now();
+
   return new Promise((resolve, reject) => {
-    if (!isBrowser) {
-      reject(new Error('Pyodide can only run in browser environment'));
-      return;
-    }
+    pendingExecutions.set(id, {
+      resolve,
+      reject,
+      logs: [],
+      startTime,
+      onOutput
+    });
 
-    // Check if already loaded
-    if (isLoadPyodideAvailable()) {
-      resolve();
-      return;
-    }
-
-    if (document.querySelector('script[src*="pyodide"]')) {
-      // Script exists, wait for it to load
-      const checkInterval = setInterval(() => {
-        if (isLoadPyodideAvailable()) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        reject(new Error('Timeout waiting for Pyodide to load'));
-      }, 30000);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js';
-    script.crossOrigin = 'anonymous';
-    script.onload = () => {
-      // Wait for loadPyodide to be available
-      const checkInterval = setInterval(() => {
-        if (isLoadPyodideAvailable()) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 50);
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        if (isLoadPyodideAvailable()) {
-          resolve();
-        } else {
-          reject(new Error('loadPyodide function not available after script load'));
-        }
-      }, 5000);
-    };
-    script.onerror = (e) => reject(new Error(`Failed to load Pyodide script: ${e}`));
-    document.head.appendChild(script);
+    worker!.postMessage({ type: 'EXECUTE', id, data: { code } });
   });
 };
 
-export const getPyodide = async (): Promise<any> => {
-  if (!isBrowser) {
-    throw new Error('Pyodide can only run in browser environment');
-  }
+// Utilities
+export const isPyodideLoaded = () => !!worker;
 
-  if (pyodideInstance) {
-    return pyodideInstance;
-  }
-
-  if (pyodideLoading) {
-    return pyodideLoading;
-  }
-
-  pyodideLoading = (async () => {
-    await loadPyodideScript();
-
-    pyodideInstance = await window.loadPyodide!({
-      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/',
-    });
-
-    // Set up stdout/stderr capture
-    await pyodideInstance.runPythonAsync(`
-import sys
-from io import StringIO
-
-class OutputCapture:
-    def __init__(self):
-        self.logs = []
-    
-    def write(self, text):
-        if text.strip():
-            self.logs.append(text.rstrip('\\n'))
-    
-    def flush(self):
-        pass
-    
-    def get_logs(self):
-        logs = self.logs.copy()
-        self.logs = []
-        return logs
-
-_output_capture = OutputCapture()
-sys.stdout = _output_capture
-sys.stderr = _output_capture
-`);
-
-    return pyodideInstance;
-  })();
-
-  return pyodideLoading;
+export const resetPythonNamespace = async () => {
+  if (!worker) return;
+  return executePython('%reset');
 };
 
-export const executePython = async (
-  code: string
-): Promise<{ logs: string[]; result: any; error?: string }> => {
-  try {
-    const pyodide = await getPyodide();
-
-    // Clear previous output
-    await pyodide.runPythonAsync('_output_capture.logs = []');
-
-    // Execute the code
-    let result;
-    try {
-      result = await pyodide.runPythonAsync(code);
-    } catch (err: any) {
-      const logs = await pyodide.runPythonAsync('_output_capture.get_logs()');
-      return {
-        logs: logs.toJs() || [],
-        result: undefined,
-        error: err.message || String(err),
-      };
-    }
-
-    // Get captured output
-    const logs = await pyodide.runPythonAsync('_output_capture.get_logs()');
-    const logsArray = logs.toJs() || [];
-
-    // Convert Python result to JS
-    let jsResult = undefined;
-    if (result !== undefined && result !== null) {
-      try {
-        jsResult = result.toJs ? result.toJs() : result;
-      } catch {
-        jsResult = String(result);
-      }
-    }
-
-    return { logs: logsArray, result: jsResult };
-  } catch (error: any) {
-    return {
-      logs: [],
-      result: undefined,
-      error: error.message || String(error),
-    };
+// TODO: Implement kill/restart worker if needed
+export const restartWorker = () => {
+  if (worker) {
+    worker.terminate();
+    worker = null;
+    pendingExecutions.forEach(exec => exec.reject('Worker terminated'));
+    pendingExecutions.clear();
+    initWorker();
   }
-};
-
-export const isPyodideLoaded = (): boolean => {
-  return pyodideInstance !== null;
-};
-
-export const isPyodideLoading = (): boolean => {
-  return pyodideLoading !== null && pyodideInstance === null;
-};
-
-// Install a Python package using micropip
-export const installPythonPackage = async (packageName: string): Promise<{ success: boolean; error?: string }> => {
-  try {
-    const pyodide = await getPyodide();
-
-    // Load micropip if not already loaded
-    await pyodide.loadPackage('micropip');
-    const micropip = pyodide.pyimport('micropip');
-
-    // Install the package
-    await micropip.install(packageName);
-
-    return { success: true };
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error.message || `Failed to install ${packageName}`
-    };
-  }
-};
-
-// Check for matplotlib and render to base64 image
-export const renderMatplotlib = async (): Promise<string | null> => {
-  try {
-    const pyodide = await getPyodide();
-
-    // Check if matplotlib is loaded and has pending figures
-    const result = await pyodide.runPythonAsync(`
-import sys
-if 'matplotlib.pyplot' in sys.modules:
-    import matplotlib.pyplot as plt
-    import io
-    import base64
-    
-    fig = plt.gcf()
-    if fig.get_axes():
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        plt.close(fig)
-        img_base64
-    else:
-        None
-else:
-    None
-`);
-
-    if (result) {
-      return `data:image/png;base64,${result}`;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
+}

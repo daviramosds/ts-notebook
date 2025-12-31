@@ -8,12 +8,14 @@ import { useTheme } from 'next-themes';
 import Cell from '@/components/Cell';
 import { getNotebook, saveNotebook } from '@/app/_actions/notebook';
 import { compileTS, executeCode, CellLanguage } from '@/lib/compiler';
+import { useMonaco } from '@monaco-editor/react';
 
 export default function NotebookPage() {
   const params = useParams();
   const router = useRouter();
   const notebookId = params.id as string;
   const { resolvedTheme, setTheme } = useTheme();
+  const monaco = useMonaco();
 
   const [cells, setCells] = useState<any[]>([]);
   const [title, setTitle] = useState('Carregando...');
@@ -35,6 +37,117 @@ export default function NotebookPage() {
     setMounted(true);
     checkSessionAndLoad();
   }, [notebookId]);
+
+  // Global Python Completion Provider (registered once)
+  useEffect(() => {
+    if (!monaco) return;
+
+    // Dispose old if exists? Monaco handles dispose of previous ones if we re-register?
+    // Actually best practice is to register once. 
+    // We check if it's already registered? No easy way.
+    // Instead we return cleanup function.
+
+    const provider = monaco.languages.registerCompletionItemProvider('python', {
+      provideCompletionItems: (model: any, position: any) => {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        const pythonKeywords = [
+          'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+          'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
+          'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
+          'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
+          'while', 'with', 'yield'
+        ];
+
+        const pythonBuiltins = [
+          'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
+          'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
+          'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format',
+          'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
+          'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+          'list', 'locals', 'map', 'max', 'memoryview', 'min', 'next', 'object',
+          'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 'repr',
+          'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod',
+          'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip'
+        ];
+
+        const pythonModules = [
+          'math', 'random', 'json', 'os', 'sys', 're', 'datetime', 'collections',
+          'itertools', 'functools', 'operator', 'string', 'textwrap', 'struct',
+          'copy', 'pprint', 'reprlib', 'enum', 'graphlib', 'numbers', 'cmath',
+          'decimal', 'fractions', 'statistics', 'array', 'bisect', 'heapq'
+        ];
+
+        const suggestions = [
+          ...pythonKeywords.map(kw => ({
+            label: kw,
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            insertText: kw,
+            range,
+          })),
+          ...pythonBuiltins.map(fn => ({
+            label: fn,
+            kind: monaco.languages.CompletionItemKind.Function,
+            insertText: fn + '($0)',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            detail: 'Built-in function',
+          })),
+          ...pythonModules.map(mod => ({
+            label: mod,
+            kind: monaco.languages.CompletionItemKind.Module,
+            insertText: mod,
+            range,
+            detail: 'Module',
+          })),
+          {
+            label: 'def',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'def ${1:function_name}(${2:args}):\n\t${3:pass}',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            detail: 'Function definition',
+          },
+          {
+            label: 'class',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'class ${1:ClassName}:\n\tdef __init__(self${2:, args}):\n\t\t${3:pass}',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            detail: 'Class definition',
+          },
+          {
+            label: 'for',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'for ${1:item} in ${2:iterable}:\n\t${3:pass}',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            detail: 'For loop',
+          },
+          {
+            label: 'if',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'if ${1:condition}:\n\t${2:pass}',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            detail: 'If statement',
+          }
+        ];
+
+        return { suggestions };
+      },
+    });
+
+    return () => {
+      provider.dispose();
+    };
+  }, [monaco]);
 
   const checkSessionAndLoad = async () => {
     try {
@@ -63,7 +176,12 @@ export default function NotebookPage() {
       if (data) {
         setTitle(data.name);
         const content = data.content as any;
-        setCells(content.cells || []);
+        // Ensure all code cells have a language field
+        const cells = (content.cells || []).map((cell: any) => ({
+          ...cell,
+          language: cell.type === 'code' ? (cell.language || 'typescript') : cell.language
+        }));
+        setCells(cells);
         setLastSaved(new Date(data.updated_at));
         setHasUnsavedChanges(false);
       }
@@ -139,7 +257,7 @@ export default function NotebookPage() {
 
     const newCells = [...cells];
     newCells[cellIndex].isExecuting = true;
-    newCells[cellIndex].output = null;
+    newCells[cellIndex].output = { logs: [], result: undefined };
     setCells([...newCells]);
 
     const cell = newCells[cellIndex];
@@ -164,13 +282,40 @@ export default function NotebookPage() {
     }
 
     try {
-      const output = await executeCode(cell.content, cellLanguage, previousCode);
-      newCells[cellIndex].output = output;
+      const output = await executeCode(cell.content, cellLanguage, previousCode, (log: string) => {
+        setCells(prevCells => {
+          const idx = prevCells.findIndex(c => c.id === cellId);
+          if (idx === -1) return prevCells;
+
+          const updatedCells = [...prevCells];
+          const currentOutput = updatedCells[idx].output || { logs: [] };
+          updatedCells[idx].output = {
+            ...currentOutput,
+            logs: [...(currentOutput.logs || []), log]
+          };
+          return updatedCells;
+        });
+      });
+
+      setCells(prevCells => {
+        const idx = prevCells.findIndex(c => c.id === cellId);
+        if (idx === -1) return prevCells;
+
+        const updatedCells = [...prevCells];
+        updatedCells[idx].output = output;
+        updatedCells[idx].isExecuting = false;
+        return updatedCells;
+      });
     } catch (err: any) {
-      newCells[cellIndex].output = { error: err.message, logs: [] };
-    } finally {
-      newCells[cellIndex].isExecuting = false;
-      setCells([...newCells]);
+      setCells(prevCells => {
+        const idx = prevCells.findIndex(c => c.id === cellId);
+        if (idx === -1) return prevCells;
+
+        const updatedCells = [...prevCells];
+        updatedCells[idx].output = { error: err.message, logs: [] };
+        updatedCells[idx].isExecuting = false;
+        return updatedCells;
+      });
     }
   };
 
@@ -505,8 +650,8 @@ export default function NotebookPage() {
             </div>
             <div
               className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${isDragging
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-                  : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600'
                 }`}
               onDragOver={(e) => {
                 e.preventDefault();

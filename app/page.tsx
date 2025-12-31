@@ -225,7 +225,14 @@ export default function Dashboard() {
   );
 
   if (!user && !loading) {
-    return <Auth onLogin={handleLogin} lang={lang} />;
+    return (
+      <Auth
+        onLogin={handleLogin}
+        lang={lang}
+        onLanguageChange={(newLang) => setLang(newLang)}
+        onThemeChange={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+      />
+    );
   }
 
   // Estado de loading inicial enquanto verifica a sessão

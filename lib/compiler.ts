@@ -78,8 +78,15 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
 export const executeCode = async (
   code: string,
   language: CellLanguage,
-  previousContext: string = ''
-): Promise<{ logs: string[]; result: any; error?: any }> => {
+  previousContext: string = '',
+  onOutput?: (log: string) => void
+): Promise<{
+  logs: string[];
+  result: any;
+  error?: any;
+  executionTime?: number;
+  richOutputs?: Array<{ type: string; data: any }>;
+}> => {
   switch (language) {
     case 'typescript': {
       const jsCode = compileTS(code);
@@ -89,7 +96,7 @@ export const executeCode = async (
       return executeJS(code, previousContext);
     }
     case 'python': {
-      return executePython(code);
+      return executePython(code, onOutput); // Now returns executionTime and richOutputs
     }
     default:
       return { logs: [], result: undefined, error: `Unsupported language: ${language}` };

@@ -240,13 +240,13 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
           <div className="animate-in fade-in slide-in-from-top-1 duration-200">
             {cell.type === 'code' ? (
               <>
-                <Editor value={cell.content} language={cell.language || 'typescript'} onChange={(val) => onUpdate(cell.id, val)} onExecute={() => onExecute(cell.id)} onSave={onSave} theme={theme} />
+                <Editor cellId={cell.id} value={cell.content} language={cell.language || 'typescript'} onChange={(val) => onUpdate(cell.id, val)} onExecute={() => onExecute(cell.id)} onSave={onSave} theme={theme} />
                 {renderOutput()}
               </>
             ) : (
               <div className="min-h-[50px]">
                 {isEditingMarkdown ? (
-                  <Editor value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
+                  <Editor cellId={cell.id} value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
                 ) : (
                   // A MÁGICA DO MARKDOWN ACONTECE AQUI
                   <div

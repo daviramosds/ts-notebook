@@ -6,6 +6,7 @@ import React, { useState, useRef, Suspense, lazy, useEffect, useCallback } from 
 const MonacoEditor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.Editor }))) as any;
 
 interface EditorProps {
+  cellId: string; // Unique ID for this editor instance
   value: string;
   onChange: (value: string) => void;
   onExecute: () => void;
@@ -20,35 +21,38 @@ const EditorFallback = () => (
   </div>
 );
 
-export default function Editor({ value, onChange, onExecute, onSave, theme, language }: EditorProps) {
-  const [isReady, setIsReady] = useState(false);
-  const [editorHeight, setEditorHeight] = useState(60); // Altura inicial
+export default function Editor({ cellId, value, onChange, onExecute, onSave, theme, language }: EditorProps) {
+  const [editorHeight, setEditorHeight] = useState(60);
+  const [isEditorReady, setIsEditorReady] = useState(false); // Track when editor is mounted
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
   const isMounted = useRef(false);
 
-  // 1. Proteção contra Drag-and-Drop (Delay de estabilização)
+  // Refs para callbacks para evitar stale closures e re-renders
+  const onExecuteRef = useRef(onExecute);
+  const onSaveRef = useRef(onSave);
+  const languageRef = useRef(language);
+
+  // Atualiza refs sempre que props mudam
+  useEffect(() => {
+    onExecuteRef.current = onExecute;
+    onSaveRef.current = onSave;
+    languageRef.current = language;
+  }, [onExecute, onSave, language]);
+
+  // Lifecycle management
   useEffect(() => {
     isMounted.current = true;
-    const timer = setTimeout(() => {
-      if (isMounted.current) setIsReady(true);
-    }, 150); // Aguarda o componente "pousar" no DOM
-
     return () => {
       isMounted.current = false;
-      clearTimeout(timer);
-      // Cleanup seguro
-      if (editorRef.current) {
-        try {
-          editorRef.current.dispose();
-        } catch (e) { }
-        editorRef.current = null;
-      }
+      editorRef.current = null;
+      setIsEditorReady(false);
     };
   }, []);
 
-  // 2. Função de redimensionamento (Restaurada e Blindada)
+  // Função de redimensionamento
   const updateLayout = useCallback(() => {
     const editor = editorRef.current;
     if (!editor || !isMounted.current) return;
@@ -72,136 +76,25 @@ export default function Editor({ value, onChange, onExecute, onSave, theme, lang
     }
   }, []);
 
-  const handleEditorMount = (editor: any, monaco: any) => {
-    if (!isMounted.current) return;
-    editorRef.current = editor;
+  // Setup effect when editor mounts - now triggers when isEditorReady becomes true
+  useEffect(() => {
+    if (!isEditorReady || !editorRef.current || !monacoRef.current) return;
 
-    // Comandos
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, onExecute);
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave && onSave());
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
 
-    // Register Python autocomplete provider
-    if (language === 'python') {
-      monaco.languages.registerCompletionItemProvider('python', {
-        provideCompletionItems: (model: any, position: any) => {
-          const word = model.getWordUntilPosition(position);
-          const range = {
-            startLineNumber: position.lineNumber,
-            endLineNumber: position.lineNumber,
-            startColumn: word.startColumn,
-            endColumn: word.endColumn,
-          };
+    // A. Setup Commands
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
+      if (onExecuteRef.current) onExecuteRef.current();
+    });
 
-          const pythonKeywords = [
-            'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-            'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
-            'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
-            'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
-            'while', 'with', 'yield'
-          ];
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      if (onSaveRef.current) onSaveRef.current();
+    });
 
-          const pythonBuiltins = [
-            'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
-            'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
-            'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format',
-            'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
-            'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
-            'list', 'locals', 'map', 'max', 'memoryview', 'min', 'next', 'object',
-            'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 'repr',
-            'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod',
-            'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip'
-          ];
-
-          const pythonModules = [
-            'math', 'random', 'json', 'os', 'sys', 're', 'datetime', 'collections',
-            'itertools', 'functools', 'operator', 'string', 'textwrap', 'struct',
-            'copy', 'pprint', 'reprlib', 'enum', 'graphlib', 'numbers', 'cmath',
-            'decimal', 'fractions', 'statistics', 'array', 'bisect', 'heapq'
-          ];
-
-          const suggestions = [
-            ...pythonKeywords.map(kw => ({
-              label: kw,
-              kind: monaco.languages.CompletionItemKind.Keyword,
-              insertText: kw,
-              range,
-            })),
-            ...pythonBuiltins.map(fn => ({
-              label: fn,
-              kind: monaco.languages.CompletionItemKind.Function,
-              insertText: fn + '($0)',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'Built-in function',
-            })),
-            ...pythonModules.map(mod => ({
-              label: mod,
-              kind: monaco.languages.CompletionItemKind.Module,
-              insertText: mod,
-              range,
-              detail: 'Module',
-            })),
-            // Common snippets
-            {
-              label: 'def',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'def ${1:function_name}(${2:args}):\n\t${3:pass}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'Function definition',
-            },
-            {
-              label: 'class',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'class ${1:ClassName}:\n\tdef __init__(self${2:, args}):\n\t\t${3:pass}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'Class definition',
-            },
-            {
-              label: 'for',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'for ${1:item} in ${2:iterable}:\n\t${3:pass}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'For loop',
-            },
-            {
-              label: 'if',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'if ${1:condition}:\n\t${2:pass}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'If statement',
-            },
-            {
-              label: 'try',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'try:\n\t${1:pass}\nexcept ${2:Exception} as ${3:e}:\n\t${4:pass}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'Try/Except block',
-            },
-            {
-              label: 'with',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'with ${1:expression} as ${2:var}:\n\t${3:pass}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-              detail: 'With statement',
-            },
-          ];
-
-          return { suggestions };
-        },
-      });
-    }
-
-    // Listeners
-    // Atualiza altura quando o conteúdo muda (digitação)
+    // B. Setup Listeners
     const changeListener = editor.onDidContentSizeChange(updateLayout);
 
-    // Observa redimensionamento do container pai (janela mudando)
     const resizeObserver = new ResizeObserver(() => {
       window.requestAnimationFrame(updateLayout);
     });
@@ -210,13 +103,24 @@ export default function Editor({ value, onChange, onExecute, onSave, theme, lang
       resizeObserver.observe(containerRef.current);
     }
 
-    // Trigger inicial para ajustar a altura assim que montar
-    window.requestAnimationFrame(updateLayout);
+    // Trigger inicial - force layout after a small delay to ensure container is ready
+    requestAnimationFrame(() => {
+      updateLayout();
+    });
 
+    // Cleanup
     return () => {
       changeListener.dispose();
       resizeObserver.disconnect();
     };
+
+  }, [isEditorReady, updateLayout]); // Now re-runs when isEditorReady becomes true
+
+  const handleEditorMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    // Trigger the setup effect by updating state
+    setIsEditorReady(true);
   };
 
   return (
@@ -225,40 +129,37 @@ export default function Editor({ value, onChange, onExecute, onSave, theme, lang
       className="border rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e1e1e] overflow-hidden shadow-sm transition-colors"
       style={{ minHeight: '60px' }}
     >
-      {!isReady ? (
-        <EditorFallback />
-      ) : (
-        <Suspense fallback={<EditorFallback />}>
-          <MonacoEditor
-            height={`${editorHeight}px`} // Altura dinâmica voltou!
-            language={language}
-            value={value}
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-            onChange={(val: string) => onChange(val || '')}
-            onMount={handleEditorMount}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              scrollBeyondLastLine: false,
-              automaticLayout: false, // MANTENHA FALSE (Isso evita o crash)
-              padding: { top: 12, bottom: 12 },
-              lineNumbers: 'on',
-              wordWrap: 'on',
-              scrollbar: {
-                vertical: 'hidden',
-                horizontal: 'auto',
-                handleMouseWheel: false,
-              },
-              overviewRulerLanes: 0,
-              hideCursorInOverviewRuler: true,
-              overviewRulerBorder: false,
-              fixedOverflowWidgets: true,
-              contextmenu: false,
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-            }}
-          />
-        </Suspense>
-      )}
+      <Suspense fallback={<EditorFallback />}>
+        <MonacoEditor
+          key={cellId} // Unique key prevents editor reuse across cells
+          height={`${editorHeight}px`}
+          language={language}
+          value={value}
+          theme={theme === 'dark' ? 'vs-dark' : 'light'}
+          onChange={(val: string) => onChange(val || '')}
+          onMount={handleEditorMount}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            scrollBeyondLastLine: false,
+            automaticLayout: false,
+            padding: { top: 12, bottom: 12 },
+            lineNumbers: 'on',
+            wordWrap: 'on',
+            scrollbar: {
+              vertical: 'hidden',
+              horizontal: 'auto',
+              handleMouseWheel: false,
+            },
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            overviewRulerBorder: false,
+            fixedOverflowWidgets: true,
+            contextmenu: false,
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+          }}
+        />
+      </Suspense>
     </div>
   );
 }
