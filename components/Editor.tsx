@@ -6,7 +6,8 @@ import React, { useState, useRef, Suspense, lazy, useEffect, useCallback } from 
 const MonacoEditor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.Editor }))) as any;
 
 interface EditorProps {
-  cellId: string; // Unique ID for this editor instance
+  cellId: string;
+  cellIndex: number;
   value: string;
   onChange: (value: string) => void;
   onExecute: () => void;
@@ -21,117 +22,105 @@ const EditorFallback = () => (
   </div>
 );
 
-export default function Editor({ cellId, value, onChange, onExecute, onSave, theme, language }: EditorProps) {
-  const [editorHeight, setEditorHeight] = useState(60);
-  const [isEditorReady, setIsEditorReady] = useState(false); // Track when editor is mounted
+// Calculate initial height based on content lines
+const calculateInitialHeight = (value: string): number => {
+  const lineCount = (value || '').split('\n').length;
+  const lineHeight = 19; // Approximate line height in pixels
+  const padding = 24; // Top + bottom padding
+  return Math.max(60, lineCount * lineHeight + padding);
+};
 
-  const containerRef = useRef<HTMLDivElement>(null);
+export default function Editor({ cellId, cellIndex, value, onChange, onExecute, onSave, theme, language }: EditorProps) {
+  // Start with a height based on content to avoid flicker
+  const [editorHeight, setEditorHeight] = useState(() => calculateInitialHeight(value));
+
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
-  const isMounted = useRef(false);
 
-  // Refs para callbacks para evitar stale closures e re-renders
+  // Refs para callbacks para evitar stale closures
   const onExecuteRef = useRef(onExecute);
   const onSaveRef = useRef(onSave);
-  const languageRef = useRef(language);
 
-  // Atualiza refs sempre que props mudam
   useEffect(() => {
     onExecuteRef.current = onExecute;
     onSaveRef.current = onSave;
-    languageRef.current = language;
-  }, [onExecute, onSave, language]);
+  }, [onExecute, onSave]);
 
-  // Lifecycle management
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-      editorRef.current = null;
-      setIsEditorReady(false);
-    };
-  }, []);
-
-  // Função de redimensionamento
-  const updateLayout = useCallback(() => {
+  // Update height when content changes
+  const updateHeight = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor || !isMounted.current) return;
+    if (!editor) return;
 
     try {
-      // Verifica se o modelo ainda existe
       const model = editor.getModel();
       if (!model || model.isDisposed()) return;
 
-      // 1. Força o layout para garantir que o Monaco leia o container
-      editor.layout();
-
-      // 2. Calcula a altura real do conteúdo
       const contentHeight = Math.max(60, editor.getContentHeight());
-
-      // 3. Atualiza o estado apenas se mudou (evita loops)
       setEditorHeight(prev => (Math.abs(prev - contentHeight) > 2 ? contentHeight : prev));
-
-    } catch (e) {
-      // Silencia erros caso o componente esteja desmontando
+    } catch {
+      // Ignore errors during unmount
     }
   }, []);
 
-  // Setup effect when editor mounts - now triggers when isEditorReady becomes true
-  useEffect(() => {
-    if (!isEditorReady || !editorRef.current || !monacoRef.current) return;
-
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-
-    // A. Setup Commands
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
-      if (onExecuteRef.current) onExecuteRef.current();
-    });
-
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      if (onSaveRef.current) onSaveRef.current();
-    });
-
-    // B. Setup Listeners
-    const changeListener = editor.onDidContentSizeChange(updateLayout);
-
-    const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updateLayout);
-    });
-
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    // Trigger inicial - force layout after a small delay to ensure container is ready
-    requestAnimationFrame(() => {
-      updateLayout();
-    });
-
-    // Cleanup
-    return () => {
-      changeListener.dispose();
-      resizeObserver.disconnect();
-    };
-
-  }, [isEditorReady, updateLayout]); // Now re-runs when isEditorReady becomes true
-
-  const handleEditorMount = (editor: any, monaco: any) => {
+  const handleEditorMount = useCallback((editor: any, monaco: any) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    // Trigger the setup effect by updating state
-    setIsEditorReady(true);
-  };
+
+    // Setup keyboard shortcuts
+    try {
+      editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
+        onExecuteRef.current?.();
+      });
+
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        onSaveRef.current?.();
+      });
+    } catch (e) {
+      console.warn('Failed to add editor commands:', e);
+    }
+
+    // Listen for content size changes
+    const disposable = editor.onDidContentSizeChange(() => {
+      updateHeight();
+    });
+
+    // Initial height calculation after mount
+    // Use multiple attempts to ensure content is rendered
+    const attempts = [0, 50, 150, 300];
+    attempts.forEach(delay => {
+      setTimeout(() => {
+        updateHeight();
+      }, delay);
+    });
+
+    // Store disposable for cleanup
+    (editor as any).__disposable = disposable;
+  }, [updateHeight]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      const editor = editorRef.current;
+      if (editor?.__disposable) {
+        try {
+          editor.__disposable.dispose();
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      editorRef.current = null;
+      monacoRef.current = null;
+    };
+  }, [cellId, cellIndex]);
 
   return (
     <div
-      ref={containerRef}
       className="border rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e1e1e] overflow-hidden shadow-sm transition-colors"
       style={{ minHeight: '60px' }}
     >
       <Suspense fallback={<EditorFallback />}>
         <MonacoEditor
-          key={cellId} // Unique key prevents editor reuse across cells
+          key={`${cellId}-${cellIndex}`}
           height={`${editorHeight}px`}
           language={language}
           value={value}
@@ -142,7 +131,7 @@ export default function Editor({ cellId, value, onChange, onExecute, onSave, the
             minimap: { enabled: false },
             fontSize: 14,
             scrollBeyondLastLine: false,
-            automaticLayout: false,
+            automaticLayout: true, // Let Monaco handle layout automatically
             padding: { top: 12, bottom: 12 },
             lineNumbers: 'on',
             wordWrap: 'on',

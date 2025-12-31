@@ -48,6 +48,7 @@ const languageConfig: Record<CellLanguage, { label: string; color: string; Icon:
 
 interface CellProps {
   cell: any;
+  cellIndex: number;
   theme: 'light' | 'dark';
   dragHandleProps?: any;
   lang: 'pt' | 'en';
@@ -79,7 +80,7 @@ const cellTranslations = {
   }
 };
 
-const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdate, onDelete, onExecute, onSave, onMove, onToggleCollapse, onLanguageChange }) => {
+const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, lang, onUpdate, onDelete, onExecute, onSave, onMove, onToggleCollapse, onLanguageChange }) => {
   const [isEditingMarkdown, setIsEditingMarkdown] = useState(cell.type === 'markdown' && !cell.content);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const t = cellTranslations[lang];
@@ -240,13 +241,13 @@ const Cell: React.FC<CellProps> = ({ cell, theme, dragHandleProps, lang, onUpdat
           <div className="animate-in fade-in slide-in-from-top-1 duration-200">
             {cell.type === 'code' ? (
               <>
-                <Editor cellId={cell.id} value={cell.content} language={cell.language || 'typescript'} onChange={(val) => onUpdate(cell.id, val)} onExecute={() => onExecute(cell.id)} onSave={onSave} theme={theme} />
+                <Editor cellId={cell.id} cellIndex={cellIndex} value={cell.content} language={cell.language || 'typescript'} onChange={(val) => onUpdate(cell.id, val)} onExecute={() => onExecute(cell.id)} onSave={onSave} theme={theme} />
                 {renderOutput()}
               </>
             ) : (
               <div className="min-h-[50px]">
                 {isEditingMarkdown ? (
-                  <Editor cellId={cell.id} value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
+                  <Editor cellId={cell.id} cellIndex={cellIndex} value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
                 ) : (
                   // A MÁGICA DO MARKDOWN ACONTECE AQUI
                   <div

@@ -574,6 +574,7 @@ export default function NotebookPage() {
                       <div ref={provided.innerRef} {...provided.draggableProps} className="mb-6">
                         <Cell
                           cell={cell}
+                          cellIndex={index}
                           theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
                           lang="pt"
                           dragHandleProps={provided.dragHandleProps}
