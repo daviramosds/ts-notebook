@@ -724,6 +724,10 @@ export default function NotebookPage() {
                 { keys: 'Ctrl + S', desc: lang === 'pt' ? 'Salvar notebook' : 'Save notebook' },
                 { keys: 'Shift + Enter', desc: lang === 'pt' ? 'Executar célula' : 'Execute cell' },
                 { keys: 'Shift + ?', desc: lang === 'pt' ? 'Mostrar atalhos' : 'Show shortcuts' },
+                { keys: 'Ctrl + D', desc: lang === 'pt' ? 'Duplicar linha' : 'Duplicate line' },
+                { keys: 'Alt + ↑ / ↓', desc: lang === 'pt' ? 'Mover linha para cima/baixo' : 'Move line up/down' },
+                { keys: 'Ctrl + /', desc: lang === 'pt' ? 'Comentar/descomentar linha' : 'Toggle comment' },
+                { keys: 'Ctrl + Shift + K', desc: lang === 'pt' ? 'Deletar linha' : 'Delete line' },
               ].map((shortcut, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
                   <span className="text-sm text-slate-600 dark:text-slate-400">{shortcut.desc}</span>
