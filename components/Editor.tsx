@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, Suspense, lazy, useEffect, useCallback } from 'react';
+import { formatCode } from '@/lib/code-formatter';
 
 // Lazy load mantido
 const MonacoEditor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.Editor }))) as any;
@@ -33,6 +34,7 @@ const calculateInitialHeight = (value: string): number => {
 export default function Editor({ cellId, cellIndex, value, onChange, onExecute, onSave, theme, language }: EditorProps) {
   // Start with a height based on content to avoid flicker
   const [editorHeight, setEditorHeight] = useState(() => calculateInitialHeight(value));
+  const [isFormatting, setIsFormatting] = useState(false);
 
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -40,11 +42,37 @@ export default function Editor({ cellId, cellIndex, value, onChange, onExecute, 
   // Refs para callbacks para evitar stale closures
   const onExecuteRef = useRef(onExecute);
   const onSaveRef = useRef(onSave);
+  const onChangeRef = useRef(onChange);
+  const languageRef = useRef(language);
+  const valueRef = useRef(value);
 
   useEffect(() => {
     onExecuteRef.current = onExecute;
     onSaveRef.current = onSave;
-  }, [onExecute, onSave]);
+    onChangeRef.current = onChange;
+    languageRef.current = language;
+    valueRef.current = value;
+  }, [onExecute, onSave, onChange, language, value]);
+
+  // Format code handler
+  const handleFormat = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor || isFormatting) return;
+
+    setIsFormatting(true);
+    try {
+      const currentValue = editor.getValue();
+      const formatted = await formatCode(currentValue, languageRef.current);
+      if (formatted !== currentValue) {
+        editor.setValue(formatted);
+        onChangeRef.current(formatted);
+      }
+    } catch (error) {
+      console.warn('Format failed:', error);
+    } finally {
+      setIsFormatting(false);
+    }
+  }, [isFormatting]);
 
   // Update height when content changes
   const updateHeight = useCallback(() => {
@@ -68,13 +96,52 @@ export default function Editor({ cellId, cellIndex, value, onChange, onExecute, 
 
     // Setup keyboard shortcuts
     try {
+      // Shift+Enter: Execute cell
       editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
         onExecuteRef.current?.();
       });
 
+      // Ctrl+S: Save notebook
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         onSaveRef.current?.();
       });
+
+      // Ctrl+Shift+F: Format code
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+        const currentValue = editor.getValue();
+        formatCode(currentValue, languageRef.current).then(formatted => {
+          if (formatted !== currentValue) {
+            editor.setValue(formatted);
+            onChangeRef.current(formatted);
+          }
+        }).catch(console.warn);
+      });
+
+      // Ctrl+D: Duplicate line (using built-in action)
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD, () => {
+        editor.getAction('editor.action.copyLinesDownAction')?.run();
+      });
+
+      // Ctrl+/: Toggle comment (using built-in action)
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
+        editor.getAction('editor.action.commentLine')?.run();
+      });
+
+      // Ctrl+Shift+K: Delete line (using built-in action)
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK, () => {
+        editor.getAction('editor.action.deleteLines')?.run();
+      });
+
+      // Alt+Up: Move line up (using built-in action)
+      editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.UpArrow, () => {
+        editor.getAction('editor.action.moveLinesUpAction')?.run();
+      });
+
+      // Alt+Down: Move line down (using built-in action)
+      editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.DownArrow, () => {
+        editor.getAction('editor.action.moveLinesDownAction')?.run();
+      });
+
     } catch (e) {
       console.warn('Failed to add editor commands:', e);
     }

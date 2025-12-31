@@ -28,6 +28,20 @@ interface PendingExecution {
 
 let pendingExecutions: Map<string, PendingExecution> = new Map();
 
+// Completion State
+interface PendingCompletion {
+  resolve: (completions: any[]) => void;
+  reject: (reason?: any) => void;
+}
+let pendingCompletions: Map<string, PendingCompletion> = new Map();
+
+// Format State
+interface PendingFormat {
+  resolve: (formatted: string) => void;
+  reject: (reason?: any) => void;
+}
+let pendingFormats: Map<string, PendingFormat> = new Map();
+
 // Initialize Worker
 const initWorker = () => {
   if (worker) return;
@@ -98,6 +112,22 @@ const initWorker = () => {
           console.error('Worker Global Error:', error);
         }
         break;
+
+      case 'COMPLETIONS':
+        if (id && pendingCompletions.has(id)) {
+          const completion = pendingCompletions.get(id)!;
+          pendingCompletions.delete(id);
+          completion.resolve(event.data.completions || []);
+        }
+        break;
+
+      case 'FORMATTED':
+        if (id && pendingFormats.has(id)) {
+          const fmt = pendingFormats.get(id)!;
+          pendingFormats.delete(id);
+          fmt.resolve(event.data.formatted || event.data.code);
+        }
+        break;
     }
   };
 
@@ -151,6 +181,87 @@ export const restartWorker = () => {
     worker = null;
     pendingExecutions.forEach(exec => exec.reject('Worker terminated'));
     pendingExecutions.clear();
+    pendingCompletions.forEach(comp => comp.reject('Worker terminated'));
+    pendingCompletions.clear();
     initWorker();
   }
 }
+
+// Get Python completions using Jedi
+export interface PythonCompletion {
+  name: string;
+  type: string;
+  description: string;
+  docstring: string;
+}
+
+export const getPythonCompletions = async (
+  code: string,
+  line: number,
+  column: number
+): Promise<PythonCompletion[]> => {
+  if (!worker) {
+    initWorker();
+  }
+
+  const id = crypto.randomUUID();
+
+  return new Promise((resolve, reject) => {
+    // Timeout after 2 seconds to avoid blocking UI
+    const timeout = setTimeout(() => {
+      pendingCompletions.delete(id);
+      resolve([]);
+    }, 2000);
+
+    pendingCompletions.set(id, {
+      resolve: (completions) => {
+        clearTimeout(timeout);
+        resolve(completions);
+      },
+      reject: (reason) => {
+        clearTimeout(timeout);
+        reject(reason);
+      }
+    });
+
+    worker!.postMessage({
+      type: 'COMPLETE',
+      id,
+      data: { code, line, column }
+    });
+  });
+};
+
+// Format Python code using Black
+export const formatPythonCode = async (code: string): Promise<string> => {
+  if (!worker) {
+    initWorker();
+  }
+
+  const id = crypto.randomUUID();
+
+  return new Promise((resolve) => {
+    // Timeout after 3 seconds
+    const timeout = setTimeout(() => {
+      pendingFormats.delete(id);
+      resolve(code); // Return original on timeout
+    }, 3000);
+
+    pendingFormats.set(id, {
+      resolve: (formatted) => {
+        clearTimeout(timeout);
+        resolve(formatted);
+      },
+      reject: () => {
+        clearTimeout(timeout);
+        resolve(code);
+      }
+    });
+
+    worker!.postMessage({
+      type: 'FORMAT',
+      id,
+      data: { code }
+    });
+  });
+};

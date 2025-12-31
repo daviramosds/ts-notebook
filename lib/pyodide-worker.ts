@@ -110,6 +110,16 @@ _magic = MagicCommands()
       // Pre-load micropip
       await pyodide.loadPackage('micropip');
 
+      // Install jedi for autocomplete (non-blocking, best effort)
+      try {
+        await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('jedi')
+`);
+      } catch (e) {
+        console.warn('Failed to install jedi for autocomplete:', e);
+      }
+
       postMessage({ type: 'LOADING', progress: 100 });
       postMessage({ type: 'READY' });
     } catch (err: any) {
@@ -256,6 +266,82 @@ ctx.onmessage = async (event) => {
 
     } catch (error: any) {
       postMessage({ type: 'ERROR', id, error: error.message });
+    }
+  }
+  else if (type === 'COMPLETE') {
+    // Jedi-based Python autocomplete
+    if (!pyodide) await initPyodide();
+
+    const { code, line, column } = data;
+
+    try {
+      // Escape the code properly for Python triple-quoted string
+      const escapedCode = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+      const completions = await pyodide.runPythonAsync(`
+import json
+try:
+    import jedi
+    code_str = '''${escapedCode}'''
+    script = jedi.Script(code_str, path='cell.py')
+    completions = script.complete(${line}, ${column})
+    result = [{
+        'name': c.name,
+        'type': c.type,
+        'description': c.description,
+        'docstring': (c.docstring() or '')[:200]
+    } for c in completions[:50]]
+    json.dumps(result)
+except Exception as e:
+    json.dumps([])
+`);
+
+      postMessage({
+        type: 'COMPLETIONS',
+        id,
+        completions: JSON.parse(completions)
+      });
+
+    } catch (error: any) {
+      postMessage({ type: 'COMPLETIONS', id, completions: [] });
+    }
+  }
+  else if (type === 'FORMAT') {
+    // Format Python code using Black
+    if (!pyodide) await initPyodide();
+
+    const { code } = data;
+
+    try {
+      const escapedCode = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+
+      const formatted = await pyodide.runPythonAsync(`
+import micropip
+
+# Install black if not already installed
+try:
+    import black
+except ImportError:
+    await micropip.install('black')
+    import black
+
+# Format the code
+code_to_format = '''${escapedCode}'''.replace('\\\\n', '\\n')
+try:
+    formatted = black.format_str(code_to_format, mode=black.Mode(line_length=88))
+    formatted
+except Exception as e:
+    code_to_format  # Return original on error
+`);
+
+      postMessage({
+        type: 'FORMATTED',
+        id,
+        formatted: formatted
+      });
+
+    } catch (error: any) {
+      postMessage({ type: 'FORMATTED', id, formatted: code, error: error.message });
     }
   }
 };

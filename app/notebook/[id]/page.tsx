@@ -9,6 +9,7 @@ import Cell from '@/components/Cell';
 import { getNotebook, saveNotebook } from '@/app/_actions/notebook';
 import { compileTS, executeCode, CellLanguage } from '@/lib/compiler';
 import { useMonaco } from '@monaco-editor/react';
+import { getSnippetsForLanguage } from '@/lib/monaco-snippets';
 
 export default function NotebookPage() {
   const params = useParams();
@@ -38,116 +39,216 @@ export default function NotebookPage() {
     checkSessionAndLoad();
   }, [notebookId]);
 
-  // Global Python Completion Provider (registered once)
+  // Ref for cells to access in completion providers
+  const cellsRef = useRef(cells);
+  useEffect(() => {
+    cellsRef.current = cells;
+  }, [cells]);
+
+  // Extract variables from code for cross-cell autocomplete
+  const extractVariables = useCallback((code: string, language: string): { name: string; type: string }[] => {
+    const variables: { name: string; type: string }[] = [];
+
+    if (language === 'python') {
+      // Python: match simple assignments like x = ... or def func_name
+      const assignmentRegex = /^(\w+)\s*=/gm;
+      const funcRegex = /^def\s+(\w+)/gm;
+      const classRegex = /^class\s+(\w+)/gm;
+
+      let match;
+      while ((match = assignmentRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'variable' });
+      }
+      while ((match = funcRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'function' });
+      }
+      while ((match = classRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'class' });
+      }
+    } else {
+      // JS/TS: match const/let/var declarations and function declarations
+      const varRegex = /(?:const|let|var)\s+(\w+)/g;
+      const funcRegex = /function\s+(\w+)/g;
+      const arrowRegex = /(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(/g;
+      const classRegex = /class\s+(\w+)/g;
+      const interfaceRegex = /interface\s+(\w+)/g;
+      const typeRegex = /type\s+(\w+)/g;
+
+      let match;
+      while ((match = varRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'variable' });
+      }
+      while ((match = funcRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'function' });
+      }
+      while ((match = arrowRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'function' });
+      }
+      while ((match = classRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'class' });
+      }
+      while ((match = interfaceRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'interface' });
+      }
+      while ((match = typeRegex.exec(code)) !== null) {
+        variables.push({ name: match[1], type: 'type' });
+      }
+    }
+
+    // Remove duplicates
+    const seen = new Set<string>();
+    return variables.filter(v => {
+      if (seen.has(v.name)) return false;
+      seen.add(v.name);
+      return true;
+    });
+  }, []);
+
+  // Comprehensive Completion Providers for all languages
   useEffect(() => {
     if (!monaco) return;
 
-    // Dispose old if exists? Monaco handles dispose of previous ones if we re-register?
-    // Actually best practice is to register once. 
-    // We check if it's already registered? No easy way.
-    // Instead we return cleanup function.
+    const disposables: any[] = [];
 
-    const provider = monaco.languages.registerCompletionItemProvider('python', {
-      provideCompletionItems: (model: any, position: any) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
+    // Helper to create completion provider for a language
+    const createProvider = (language: 'typescript' | 'javascript' | 'python') => {
+      return monaco.languages.registerCompletionItemProvider(language, {
+        provideCompletionItems: (model: any, position: any) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
 
-        const pythonKeywords = [
-          'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-          'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
-          'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
-          'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
-          'while', 'with', 'yield'
-        ];
+          const suggestions: any[] = [];
 
-        const pythonBuiltins = [
-          'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
-          'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
-          'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format',
-          'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
-          'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
-          'list', 'locals', 'map', 'max', 'memoryview', 'min', 'next', 'object',
-          'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 'repr',
-          'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod',
-          'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip'
-        ];
+          // 1. Add snippets from our snippets module
+          const snippets = getSnippetsForLanguage(language);
+          snippets.forEach(snippet => {
+            suggestions.push({
+              label: snippet.label,
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: snippet.insertText,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: snippet.detail,
+              documentation: snippet.documentation,
+              range,
+              sortText: '0' + snippet.label, // Prioritize snippets
+            });
+          });
 
-        const pythonModules = [
-          'math', 'random', 'json', 'os', 'sys', 're', 'datetime', 'collections',
-          'itertools', 'functools', 'operator', 'string', 'textwrap', 'struct',
-          'copy', 'pprint', 'reprlib', 'enum', 'graphlib', 'numbers', 'cmath',
-          'decimal', 'fractions', 'statistics', 'array', 'bisect', 'heapq'
-        ];
+          // 2. Add cross-cell variables (from previous cells)
+          const currentCells = cellsRef.current;
+          const isPython = language === 'python';
 
-        const suggestions = [
-          ...pythonKeywords.map(kw => ({
-            label: kw,
-            kind: monaco.languages.CompletionItemKind.Keyword,
-            insertText: kw,
-            range,
-          })),
-          ...pythonBuiltins.map(fn => ({
-            label: fn,
-            kind: monaco.languages.CompletionItemKind.Function,
-            insertText: fn + '($0)',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-            detail: 'Built-in function',
-          })),
-          ...pythonModules.map(mod => ({
-            label: mod,
-            kind: monaco.languages.CompletionItemKind.Module,
-            insertText: mod,
-            range,
-            detail: 'Module',
-          })),
-          {
-            label: 'def',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'def ${1:function_name}(${2:args}):\n\t${3:pass}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-            detail: 'Function definition',
-          },
-          {
-            label: 'class',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'class ${1:ClassName}:\n\tdef __init__(self${2:, args}):\n\t\t${3:pass}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-            detail: 'Class definition',
-          },
-          {
-            label: 'for',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'for ${1:item} in ${2:iterable}:\n\t${3:pass}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-            detail: 'For loop',
-          },
-          {
-            label: 'if',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'if ${1:condition}:\n\t${2:pass}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-            detail: 'If statement',
+          currentCells.forEach((cell, index) => {
+            if (cell.type !== 'code') return;
+            const cellLang = cell.language || 'typescript';
+
+            // Only include same-language cells for cross-cell completion
+            if (isPython && cellLang !== 'python') return;
+            if (!isPython && cellLang === 'python') return;
+
+            const vars = extractVariables(cell.content || '', cellLang);
+            vars.forEach(v => {
+              const kindMap: Record<string, any> = {
+                variable: monaco.languages.CompletionItemKind.Variable,
+                function: monaco.languages.CompletionItemKind.Function,
+                class: monaco.languages.CompletionItemKind.Class,
+                interface: monaco.languages.CompletionItemKind.Interface,
+                type: monaco.languages.CompletionItemKind.TypeParameter,
+              };
+
+              suggestions.push({
+                label: v.name,
+                kind: kindMap[v.type] || monaco.languages.CompletionItemKind.Variable,
+                insertText: v.name,
+                detail: `${v.type} (cell ${index + 1})`,
+                documentation: `Defined in cell ${index + 1}`,
+                range,
+                sortText: '1' + v.name, // After snippets
+              });
+            });
+          });
+
+          // 3. Language-specific keywords and builtins
+          if (language === 'python') {
+            const pythonKeywords = [
+              'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+              'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
+              'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
+              'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
+              'while', 'with', 'yield'
+            ];
+
+            const pythonBuiltins = [
+              'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
+              'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
+              'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format',
+              'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
+              'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+              'list', 'locals', 'map', 'max', 'memoryview', 'min', 'next', 'object',
+              'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 'repr',
+              'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod',
+              'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip'
+            ];
+
+            const pythonModules = [
+              'math', 'random', 'json', 'os', 'sys', 're', 'datetime', 'collections',
+              'itertools', 'functools', 'operator', 'string', 'copy', 'pprint',
+              'numpy', 'pandas', 'matplotlib', 'requests', 'urllib'
+            ];
+
+            pythonKeywords.forEach(kw => {
+              suggestions.push({
+                label: kw,
+                kind: monaco.languages.CompletionItemKind.Keyword,
+                insertText: kw,
+                range,
+                sortText: '2' + kw,
+              });
+            });
+
+            pythonBuiltins.forEach(fn => {
+              suggestions.push({
+                label: fn,
+                kind: monaco.languages.CompletionItemKind.Function,
+                insertText: fn + '($0)',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                detail: 'Built-in function',
+                range,
+                sortText: '2' + fn,
+              });
+            });
+
+            pythonModules.forEach(mod => {
+              suggestions.push({
+                label: mod,
+                kind: monaco.languages.CompletionItemKind.Module,
+                insertText: mod,
+                detail: 'Module',
+                range,
+                sortText: '3' + mod,
+              });
+            });
           }
-        ];
 
-        return { suggestions };
-      },
-    });
+          return { suggestions };
+        },
+      });
+    };
+
+    // Register providers for all languages
+    disposables.push(createProvider('typescript'));
+    disposables.push(createProvider('javascript'));
+    disposables.push(createProvider('python'));
 
     return () => {
-      provider.dispose();
+      disposables.forEach(d => d.dispose());
     };
-  }, [monaco]);
+  }, [monaco, extractVariables]);
 
   const checkSessionAndLoad = async () => {
     try {
