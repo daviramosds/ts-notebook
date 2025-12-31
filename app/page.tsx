@@ -140,7 +140,13 @@ export default function Dashboard() {
 
   const handleLogin = (loggedUser: any) => {
     setUser(loggedUser);
-    // NÃO SALVAMOS MAIS NO LOCALSTORAGE
+    // Apply user preferences immediately after login
+    if (loggedUser.language) {
+      setLang(loggedUser.language as 'pt' | 'en');
+    }
+    if (loggedUser.theme) {
+      setTheme(loggedUser.theme);
+    }
     fetchNotebooks();
   };
 
