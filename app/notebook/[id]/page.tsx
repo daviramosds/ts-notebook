@@ -11,6 +11,7 @@ import { compileTS, executeCode, CellLanguage } from '@/lib/compiler';
 import { useMonaco } from '@monaco-editor/react';
 import { getSnippetsForLanguage } from '@/lib/monaco-snippets';
 import { EditorSettings, DEFAULT_EDITOR_SETTINGS } from '@/lib/editor-settings';
+import '@/lib/algorithm-tracer'; // Initialize tracer globally
 
 export default function NotebookPage() {
   const params = useParams();

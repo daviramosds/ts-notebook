@@ -22,6 +22,12 @@
 - Auto-formatting and bracket pair colorization
 - Keyboard shortcuts (Ctrl+Enter to run, Cmd+S to save)
 
+### 🔍 Algorithm Visualization
+- **Built-in Tracer**: Visualize algorithms step-by-step
+- **Multi-language**: Works with both TypeScript and Python
+- **Rich Visualization**: View variables, arrays, and execution flow
+- **Zero Config**: Just use `tracer.addStep()` in your code
+
 ### 🎨 Modern UI/UX
 - Beautiful, professional dark/light theme support
 - Drag-and-drop cell reordering
@@ -31,7 +37,7 @@
 
 ### 💾 Data Persistence
 - PostgreSQL database with Prisma ORM
-- User authentication via Supabase
+- User authentication (JWT)
 - Auto-save functionality
 - Notebook sharing capabilities
 
@@ -46,7 +52,7 @@
 - **UI**: React 19, Tailwind CSS 4
 - **Editor**: Monaco Editor
 - **Database**: PostgreSQL with Prisma
-- **Authentication**: Supabase
+- **Authentication**: JWT / Custom Auth
 - **Code Execution**: 
   - TypeScript/JavaScript: Sucrase
   - Python: Pyodide
@@ -79,10 +85,6 @@
    ```env
    # Database
    DATABASE_URL="postgresql://user:password@localhost:5432/tslab"
-   
-   # Supabase
-   NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
    
    # JWT Secret
    JWT_SECRET=your-secret-key
@@ -129,11 +131,21 @@
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Enter` / `Cmd+Enter` | Execute current cell |
-| `Ctrl+S` / `Cmd+S` | Save notebook |
-| `Shift+Enter` | Execute cell and move to next |
-| `Ctrl+/` | Toggle comment |
-| `Tab` | Indent/Autocomplete |
+| `Ctrl + S` | Save notebook |
+| `Shift + Enter` | Run cell |
+| `Shift + ?` | Show shortcuts |
+| `Ctrl + H` | Open cell history |
+| `Ctrl + Alt + Z` | Undo (History) |
+| `Ctrl + Alt + Shift + Z` | Redo (History) |
+| `Ctrl + D` | Duplicate line |
+| `Alt + ↑ / ↓` | Move line up/down |
+| `Ctrl + /` | Toggle comment |
+| `Ctrl + Shift + K` | Delete line |
+### 🔍 Algorithm Visualization (Tracer)
+
+You can visualize any algorithm in real-time using the built-in `tracer` object. 
+
+👉 **[Read the full Tracer Documentation](TRACER.md)** to learn how to use it with TypeScript and Python.
 
 ## 🏗️ Project Structure
 
@@ -202,7 +214,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) - VS Code's editor
 - [Pyodide](https://pyodide.org/) - Python in the browser
 - [Prisma](https://www.prisma.io/) - Next-generation ORM
-- [Supabase](https://supabase.com/) - Open source Firebase alternative
 - [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
 
 ## 📧 Support

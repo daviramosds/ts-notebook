@@ -40,9 +40,6 @@ export const executeJS = (jsCode: string, previousContext: string = ''): Promise
     };
 
     try {
-      // Criação da função de execução isolada.
-      // Removemos 'supabase' e 'rest' dos argumentos pois não temos essas configs agora.
-      // Usamos 'eval' para garantir que o retorno da última linha seja capturado.
       const executionFn = new Function('console', 'setCapture', 'previousContext', `
         return (async function() {
           try {

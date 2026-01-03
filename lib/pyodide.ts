@@ -88,6 +88,17 @@ const initWorker = () => {
           const exec = pendingExecutions.get(id)!;
           pendingExecutions.delete(id);
 
+          // Sync Python tracer steps to global TypeScript tracer
+          if (results.algorithmSteps && results.algorithmSteps.length > 0 && typeof window !== 'undefined') {
+            const globalTracer = (window as any).tracer;
+            if (globalTracer) {
+              if (globalTracer) {
+                globalTracer.reset();
+                globalTracer.setSteps(results.algorithmSteps);
+              }
+            }
+          }
+
           exec.resolve({
             logs: exec.logs,
             result: results.result,
@@ -148,6 +159,11 @@ export const executePython = async (
 ): Promise<PyodideResult> => {
   if (!worker) {
     initWorker();
+  }
+
+  // Reset frontend tracer immediately to clear old visualization steps
+  if (typeof window !== 'undefined' && (window as any).tracer) {
+    (window as any).tracer.reset();
   }
 
   const id = crypto.randomUUID();

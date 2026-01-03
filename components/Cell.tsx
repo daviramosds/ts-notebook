@@ -4,11 +4,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm'; // Importe o plugin GFM
 import Editor from './Editor';
 import CellHistoryModal from './CellHistoryModal';
+import RichOutput from './RichOutput';
+import ExecutionVisualizer from './ExecutionVisualizer';
+import AlgorithmVisualizer from './AlgorithmVisualizer';
 import { useCellHistory } from '@/lib/cell-history';
 import { EditorSettings } from '@/lib/editor-settings';
+import { extractVisualizationData } from '@/lib/output-renderers';
+import { tracer } from '@/lib/algorithm-tracer';
 import {
   Play, Trash2, ChevronUp, ChevronDown, Edit3, Eye,
-  ChevronRight, GripVertical, Loader2, Clock
+  ChevronRight, GripVertical, Loader2, Clock, Sparkles, Zap
 } from 'lucide-react';
 
 // Language type
@@ -88,6 +93,9 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
   const [isEditingMarkdown, setIsEditingMarkdown] = useState(cell.type === 'markdown' && !cell.content);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showVisualizer, setShowVisualizer] = useState(false);
+  const [showAlgorithmViz, setShowAlgorithmViz] = useState(false);
+  const [autoVisualize, setAutoVisualize] = useState(false);
 
   const t = cellTranslations[lang];
   const isDark = theme === 'dark';
@@ -144,9 +152,19 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
   };
 
   // Create snapshot before execution
-  const handleExecute = () => {
+  const handleExecute = async () => {
     history.addSnapshot(cell.content || '', 'Antes da execução', true);
-    onExecute(cell.id);
+
+    // Execute the cell
+    await onExecute(cell.id);
+
+    // Check if there are algorithm steps captured
+    setTimeout(() => {
+      const steps = tracer.getSteps();
+      if (steps.length > 0 && autoVisualize) {
+        setShowAlgorithmViz(true);
+      }
+    }, 500); // Wait for execution to complete
   };
 
   // Handle restore from history
@@ -160,33 +178,26 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
 
   const renderOutput = () => {
     if (!cell.output || cell.isCollapsed) return null;
-    const { logs, error, result } = cell.output;
-
-    if ((!logs || logs.length === 0) && !error && result === undefined) return null;
 
     return (
-      <div className={`mt-4 p-4 rounded-lg border font-mono text-sm overflow-x-auto shadow-inner transition-colors duration-200 ${isDark ? 'bg-[#0d1117] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-        }`}>
-        <div className={`flex items-center justify-between mb-2 pb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-          <span className="text-[10px] font-bold tracking-widest uppercase opacity-50">{t.console}</span>
-        </div>
-        {logs && logs.map((log: string, i: number) => (
-          <div key={i} className={`whitespace-pre-wrap py-0.5 border-l-2 pl-3 mb-1 ${isDark ? 'border-blue-500/30' : 'border-blue-500/50'}`}>{log}</div>
-        ))}
-        {result !== undefined && (
-          <div className="text-blue-500 dark:text-blue-400 mt-1 flex gap-2 border-l-2 border-blue-500 pl-3">
-            <span className="opacity-50 shrink-0">out:</span>
-            <span className="whitespace-pre-wrap">{typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}</span>
-          </div>
-        )}
-        {error && (
-          <div className="text-red-500 mt-1 whitespace-pre-wrap border-l-2 border-red-500 pl-3 bg-red-500/10 p-2 rounded">
-            <span className="font-bold uppercase text-[10px] block mb-1">{t.error}</span>
-            {error}
-          </div>
-        )}
-      </div>
+      <RichOutput
+        output={cell.output}
+        theme={theme}
+        lang={lang}
+        onVisualize={() => {
+          const vizData = extractVisualizationData(cell.output.result);
+          if (vizData) {
+            setShowVisualizer(true);
+          }
+        }}
+      />
     );
+  };
+
+  // Get visualization data for the modal
+  const getVisualizationData = () => {
+    if (!cell.output?.result) return null;
+    return extractVisualizationData(cell.output.result);
   };
 
   return (
@@ -222,6 +233,27 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
           </button>
         )}
 
+        {/* Auto-Visualize Toggle Button */}
+        {cell.type === 'code' && (
+          <button
+            onClick={() => setAutoVisualize(!autoVisualize)}
+            className={`p-2 rounded-full mb-2 relative transition-all duration-100 ease-in-out cursor-pointer
+              ${autoVisualize
+                ? isDark
+                  ? 'bg-yellow-900/30 text-yellow-400 hover:bg-yellow-800/40'
+                  : 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                : isDark
+                  ? 'text-slate-500 hover:bg-slate-800 hover:text-yellow-400'
+                  : 'text-slate-400 hover:bg-yellow-50 hover:text-yellow-600'
+              }`}
+            title={lang === 'pt'
+              ? (autoVisualize ? 'Desabilitar visualização automática' : 'Habilitar visualização automática')
+              : (autoVisualize ? 'Disable auto-visualization' : 'Enable auto-visualization')}
+          >
+            <Zap size={18} fill={autoVisualize ? 'currentColor' : 'none'} />
+          </button>
+        )}
+
         {/* Play Button only for Code */}
         {!cell.isCollapsed && cell.type === 'code' && (
           <button
@@ -245,6 +277,25 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
             )}
           </button>
         )}
+
+        {/* Visualize Button - only show if there's a result that can be visualized */}
+        {!cell.isCollapsed && cell.type === 'code' && cell.output?.result && (
+          <button
+            onClick={() => {
+              const vizData = getVisualizationData();
+              if (vizData) setShowVisualizer(true);
+            }}
+            className={`p-2 rounded-full mb-2 relative transition-all duration-100 ease-in-out cursor-pointer active:scale-75
+              ${isDark
+                ? 'text-purple-500 hover:bg-purple-900/30 hover:text-purple-400'
+                : 'text-purple-600 hover:bg-purple-50'
+              }`}
+            title={lang === 'pt' ? 'Visualizar Dados' : 'Visualize Data'}
+          >
+            <Sparkles size={18} />
+          </button>
+        )}
+
 
         <button onClick={() => onMove(cell.id, 'up')} className={`p-1.5 rounded transition-colors cursor-pointer active:scale-90 ${isDark ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-200'}`}><ChevronUp size={16} /></button>
         <button onClick={() => onMove(cell.id, 'down')} className={`p-1.5 rounded mt-0.5 transition-colors cursor-pointer active:scale-90 ${isDark ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-200'}`}><ChevronDown size={16} /></button>
@@ -389,6 +440,28 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
           if (content !== null) onUpdate(cell.id, content);
         }}
       />
+
+      {/* Execution Visualizer Modal */}
+      {showVisualizer && getVisualizationData() && (
+        <ExecutionVisualizer
+          data={getVisualizationData()!}
+          isOpen={showVisualizer}
+          onClose={() => setShowVisualizer(false)}
+          theme={theme}
+          lang={lang}
+        />
+      )}
+
+      {/* Algorithm Visualizer Modal */}
+      {showAlgorithmViz && tracer.getSteps().length > 0 && (
+        <AlgorithmVisualizer
+          steps={tracer.getSteps()}
+          isOpen={showAlgorithmViz}
+          onClose={() => setShowAlgorithmViz(false)}
+          theme={theme}
+          lang={lang}
+        />
+      )}
     </div>
   );
 };

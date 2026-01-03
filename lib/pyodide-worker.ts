@@ -77,11 +77,51 @@ class RichOutputManager:
 
 _rich_output = RichOutputManager()
 
+# Algorithm Tracer for Python (matches TypeScript API)
+class AlgorithmTracer:
+    def __init__(self):
+        self.steps = []
+        self.step_counter = 0
+    
+    def reset(self):
+        """
+        Reset all captured steps.
+        Call this at the start of your algorithm.
+        """
+        self.steps = []
+        self.step_counter = 0
+    
+    def add_step(self, description, variables, arrays=None):
+        """
+        Add a visualization step.
+        
+        Args:
+            description (str): Description of the current step
+            variables (dict): variables to display (e.g. {'x': 10, 'arr': [1,2]})
+            arrays (list): (Optional) List of dicts for array visualization
+                           [{'name': 'arr', 'values': [1,2], 'highlights': [1]}]
+        """
+        step = {
+            'step': self.step_counter,
+            'description': description,
+            'variables': variables,
+            'arrays': arrays or []
+        }
+        self.steps.append(step)
+        self.step_counter += 1
+    
+    def get_steps(self):
+        """Return the list of captured steps."""
+        return self.steps
+
+# Global tracer instance (matches TS tracer)
+tracer = AlgorithmTracer()
+
 # Magic commands support
 class MagicCommands:
     @staticmethod
     def reset():
-        to_keep = set(['__builtins__', '__name__', '__doc__', '_rich_output', 'MagicCommands', '_magic'])
+        to_keep = set(['__builtins__', '__name__', '__doc__', '_rich_output', 'MagicCommands', '_magic', 'AlgorithmTracer', 'tracer'])
         user_vars = [k for k in globals().keys() if k not in to_keep and not k.startswith('_')]
         for var in user_vars:
             del globals()[var]
@@ -89,14 +129,14 @@ class MagicCommands:
     
     @staticmethod
     def who():
-        to_exclude = set(['__builtins__', '__name__', '__doc__', '_rich_output', 'MagicCommands', '_magic'])
+        to_exclude = set(['__builtins__', '__name__', '__doc__', '_rich_output', 'MagicCommands', '_magic', 'AlgorithmTracer', 'tracer'])
         user_vars = [k for k in sorted(globals().keys()) if k not in to_exclude and not k.startswith('_')]
         return user_vars
     
     @staticmethod
     def whos():
         import sys
-        to_exclude = set(['__builtins__', '__name__', '__doc__', '_rich_output', 'MagicCommands', '_magic'])
+        to_exclude = set(['__builtins__', '__name__', '__doc__', '_rich_output', 'MagicCommands', '_magic', 'AlgorithmTracer', 'tracer'])
         user_vars = [(k, type(globals()[k]).__name__, sys.getsizeof(globals()[k])) 
                      for k in sorted(globals().keys()) 
                      if k not in to_exclude and not k.startswith('_')]
@@ -136,12 +176,15 @@ async function setupMatplotlib() {
   if (!pyodide) return;
   await pyodide.runPythonAsync(`
 import sys
-if 'matplotlib' in sys.modules:
+try:
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     # Clear any potential stale plots
     plt.clf()
+except ImportError:
+    pass
+
 `);
 }
 
@@ -228,6 +271,8 @@ ctx.onmessage = async (event) => {
       await setupMatplotlib();
 
       // 3. Run code
+      // Reset tracer before execution to prevent state leak from previous cells
+      await pyodide.runPythonAsync('tracer.reset()');
       const result = await pyodide.runPythonAsync(code);
 
       // 4. Capture Rich Outputs
@@ -235,24 +280,57 @@ ctx.onmessage = async (event) => {
 
       // Matplotlib
       const plot = await checkMatplotlib();
-      if (plot) richOutputs.push({ type: 'image', data: plot });
+      if (plot) {
+        richOutputs.push({
+          type: 'image',
+          data: plot,
+          metadata: { chartType: 'matplotlib' }
+        });
+      }
 
       // Pandas (Automatic display of last line if it's a DataFrame)
-      // Actually, pyodide.runPythonAsync returns the last expression value
-      // If result is a DataFrame proxy, we can convert it.
       let jsResult = result;
       if (result && typeof result.toJs === 'function') {
-        jsResult = result.toJs();
-        // Check if it looks like a DataFrame or we can check type
-        // Getting type of PyProxy is tricky. 
-        // Easy way: try to call .to_html() if it exists
+        // Check if it's a DataFrame before converting
         try {
-          if (result.type === 'DataFrame' || result.to_html) {
+          if (result.to_html && typeof result.to_html === 'function') {
+            // It's a DataFrame!
             const html = result.to_html();
-            richOutputs.push({ type: 'html', data: html });
-            jsResult = "<Pandas DataFrame>"; // Don't verify raw structure in console
+            const shape = result.shape ? result.shape.toJs() : null;
+            const columns = result.columns ? result.columns.toJs() : null;
+
+            richOutputs.push({
+              type: 'html',
+              data: html,
+              metadata: {
+                rows: shape ? shape[0] : null,
+                columns: columns ? columns : null
+              }
+            });
+            jsResult = "<Pandas DataFrame>"; // Simple representation
+          } else {
+            // Regular Python object, convert to JS
+            jsResult = result.toJs({ dict_converter: Object.fromEntries });
           }
-        } catch (e) { }
+        } catch (e) {
+          // If conversion fails, try normal toJs
+          try {
+            jsResult = result.toJs({ dict_converter: Object.fromEntries });
+          } catch {
+            jsResult = String(result);
+          }
+        }
+      }
+
+      // Extract algorithm tracer steps from Python
+      let algorithmSteps: any[] = [];
+      try {
+        const tracerSteps = await pyodide.runPythonAsync('tracer.get_steps()');
+        if (tracerSteps) {
+          algorithmSteps = tracerSteps.toJs({ dict_converter: Object.fromEntries });
+        }
+      } catch (e) {
+        // No steps or error getting steps
       }
 
       postMessage({
@@ -260,7 +338,8 @@ ctx.onmessage = async (event) => {
         id,
         results: {
           result: jsResult,
-          richOutputs
+          richOutputs,
+          algorithmSteps
         }
       });
 
@@ -282,9 +361,36 @@ ctx.onmessage = async (event) => {
 import json
 try:
     import jedi
-    code_str = '''${escapedCode}'''
+    
+    # Header to make tracer visible to Jedi
+    header = '''
+class AlgorithmTracer:
+    def reset(self):
+        """Reset all captured steps. Call this at the start."""
+        pass
+
+    def add_step(self, description, variables, arrays=None):
+        """
+        Add a visualization step.
+        
+        Args:
+            description (str): Description of the current step
+            variables (dict): variables to display
+            arrays (list): Optional list of dicts for array visualization
+        """
+        pass
+
+tracer = AlgorithmTracer()
+'''
+    header_lines = header.count('\\n') + 1
+    
+    # Combine header and user code
+    code_str = header + '''${escapedCode}'''
+    
+    # Adjust line number (Jedi uses 1-based indexing)
     script = jedi.Script(code_str, path='cell.py')
-    completions = script.complete(${line}, ${column})
+    completions = script.complete(${line} + header_lines, ${column})
+    
     result = [{
         'name': c.name,
         'type': c.type,

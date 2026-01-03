@@ -148,6 +148,48 @@ export default function Editor({ cellId, cellIndex, value, onChange, onExecute, 
       console.warn('Failed to add editor commands:', e);
     }
 
+    // Add Tracer Types for IntelliSense
+    const tracerTypes = `
+      interface AlgorithmTracer {
+        /**
+         * Resets the tracer state. Call this at the start of your algorithm.
+         */
+        reset(): void;
+
+        /**
+         * Adds a visualization step.
+         * @param description Brief description of the current step.
+         * @param variables Object containing variable names and values to track.
+         * @param arrays Optional list of arrays to visualize with highlights.
+         */
+        addStep(
+          description: string,
+          variables: Record<string, any>,
+          arrays?: Array<{
+            name: string;
+            values: any[];
+            highlights?: number[];
+          }>
+        ): void;
+      }
+      
+      /**
+       * Global Algorithm Tracer for visualization.
+       */
+      declare var tracer: AlgorithmTracer;
+      declare interface Window {
+        tracer: AlgorithmTracer;
+      }
+    `;
+
+    try {
+      const libUri = 'ts:filename/tracer.d.ts';
+      monaco.languages.typescript.typescriptDefaults.addExtraLib(tracerTypes, libUri);
+      monaco.languages.typescript.javascriptDefaults.addExtraLib(tracerTypes, libUri);
+    } catch (e) {
+      console.warn('Failed to add tracer types:', e);
+    }
+
     // Listen for content size changes
     const disposable = editor.onDidContentSizeChange(() => {
       updateHeight();
