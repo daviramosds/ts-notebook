@@ -97,6 +97,22 @@ export default function Dashboard() {
   const router = useRouter();
   const t = dashboardT[lang];
 
+  // Suppress Next.js navigation cancellation errors (they're benign)
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      // Check if it's a Next.js navigation cancellation error
+      if (reason && typeof reason === 'object' && reason.type === 'cancelation') {
+        event.preventDefault(); // Prevent the error from being logged
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   useEffect(() => {
     setMounted(true);
     checkSession(); // Verifica sessão via API, não LocalStorage
@@ -180,7 +196,10 @@ export default function Dashboard() {
     };
 
     try {
+      // Ensure the notebook is saved before navigation
       await saveNotebook(newNotebook);
+
+      // Navigate after successful save
       router.push(`/notebook/${newId}`);
     } catch (error) {
       console.error(error);
