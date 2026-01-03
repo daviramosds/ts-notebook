@@ -37,6 +37,6 @@ Bash/Shell (execução limitada)
 Tabelas interativas para arrays/objetos
 Gráficos inline para matplotlib/plotly (Python)
 Syntax highlighting no output
-9. Diff/History por Célula
+<!-- 9. Diff/History por Célula
 Histórico de mudanças por célula
-Desfazer específico por célula (além do Ctrl+Z normal)
+Desfazer específico por célula (além do Ctrl+Z normal) -->

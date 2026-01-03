@@ -10,6 +10,7 @@ import { getNotebook, saveNotebook } from '@/app/_actions/notebook';
 import { compileTS, executeCode, CellLanguage } from '@/lib/compiler';
 import { useMonaco } from '@monaco-editor/react';
 import { getSnippetsForLanguage } from '@/lib/monaco-snippets';
+import { EditorSettings, DEFAULT_EDITOR_SETTINGS } from '@/lib/editor-settings';
 
 export default function NotebookPage() {
   const params = useParams();
@@ -33,6 +34,7 @@ export default function NotebookPage() {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [editorSettings, setEditorSettings] = useState<EditorSettings>(DEFAULT_EDITOR_SETTINGS);
 
   useEffect(() => {
     setMounted(true);
@@ -261,7 +263,18 @@ export default function NotebookPage() {
       const data = await res.json();
       setUser(data.user);
 
-      // 2. Carrega o notebook
+      // 2. Carrega configurações do editor
+      try {
+        const settingsRes = await fetch('/api/user/editor-settings');
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          setEditorSettings(settingsData.settings);
+        }
+      } catch (e) {
+        console.log('Failed to load editor settings, using defaults');
+      }
+
+      // 3. Carrega o notebook
       await loadNotebook(notebookId);
     } catch (err) {
       console.error("Erro de sessão:", err);
@@ -678,6 +691,7 @@ export default function NotebookPage() {
                           cellIndex={index}
                           theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
                           lang="pt"
+                          editorSettings={editorSettings}
                           dragHandleProps={provided.dragHandleProps}
                           onUpdate={updateCell}
                           onDelete={deleteCell}
@@ -724,6 +738,9 @@ export default function NotebookPage() {
                 { keys: 'Ctrl + S', desc: lang === 'pt' ? 'Salvar notebook' : 'Save notebook' },
                 { keys: 'Shift + Enter', desc: lang === 'pt' ? 'Executar célula' : 'Execute cell' },
                 { keys: 'Shift + ?', desc: lang === 'pt' ? 'Mostrar atalhos' : 'Show shortcuts' },
+                { keys: 'Ctrl + H', desc: lang === 'pt' ? 'Abrir histórico da célula' : 'Open cell history' },
+                { keys: 'Ctrl + Alt + Z', desc: lang === 'pt' ? 'Desfazer (histórico)' : 'Undo (history)' },
+                { keys: 'Ctrl + Alt + Shift + Z', desc: lang === 'pt' ? 'Refazer (histórico)' : 'Redo (history)' },
                 { keys: 'Ctrl + D', desc: lang === 'pt' ? 'Duplicar linha' : 'Duplicate line' },
                 { keys: 'Alt + ↑ / ↓', desc: lang === 'pt' ? 'Mover linha para cima/baixo' : 'Move line up/down' },
                 { keys: 'Ctrl + /', desc: lang === 'pt' ? 'Comentar/descomentar linha' : 'Toggle comment' },

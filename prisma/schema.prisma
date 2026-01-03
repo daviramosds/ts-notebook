@@ -15,15 +15,16 @@ datasource db {
 }
 
 model User {
-  id         String              @id @default(cuid())
-  email      String              @unique
-  username   String?             @unique
-  name       String?
-  password   String
-  language   String              @default("en")
-  theme      String              @default("system")
-  notebooks  Notebook[]
-  accessLogs NotebookAccessLog[]
+  id             String              @id @default(cuid())
+  email          String              @unique
+  username       String?             @unique
+  name           String?
+  password       String
+  language       String              @default("en")
+  theme          String              @default("system")
+  editorSettings Json?               // Editor preferences
+  notebooks      Notebook[]
+  accessLogs     NotebookAccessLog[]
 
   @@map("users")
 }

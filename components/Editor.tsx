@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, Suspense, lazy, useEffect, useCallback } from 'react';
 import { formatCode } from '@/lib/code-formatter';
+import { EditorSettings, DEFAULT_EDITOR_SETTINGS } from '@/lib/editor-settings';
 
 // Lazy load mantido
 const MonacoEditor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.Editor }))) as any;
@@ -15,6 +16,7 @@ interface EditorProps {
   onSave?: () => void;
   theme: 'light' | 'dark';
   language: string;
+  editorSettings?: EditorSettings; // User editor preferences
 }
 
 const EditorFallback = () => (
@@ -31,7 +33,7 @@ const calculateInitialHeight = (value: string): number => {
   return Math.max(60, lineCount * lineHeight + padding);
 };
 
-export default function Editor({ cellId, cellIndex, value, onChange, onExecute, onSave, theme, language }: EditorProps) {
+export default function Editor({ cellId, cellIndex, value, onChange, onExecute, onSave, theme, language, editorSettings = DEFAULT_EDITOR_SETTINGS }: EditorProps) {
   // Start with a height based on content to avoid flicker
   const [editorHeight, setEditorHeight] = useState(() => calculateInitialHeight(value));
   const [isFormatting, setIsFormatting] = useState(false);
@@ -195,24 +197,30 @@ export default function Editor({ cellId, cellIndex, value, onChange, onExecute, 
           onChange={(val: string) => onChange(val || '')}
           onMount={handleEditorMount}
           options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            scrollBeyondLastLine: false,
-            automaticLayout: true, // Let Monaco handle layout automatically
-            padding: { top: 12, bottom: 12 },
-            lineNumbers: 'on',
-            wordWrap: 'on',
+            minimap: { enabled: editorSettings.minimap },
+            fontSize: editorSettings.fontSize,
+            fontFamily: editorSettings.fontFamily,
+            lineNumbers: editorSettings.lineNumbers,
+            wordWrap: editorSettings.wordWrap,
+            tabSize: editorSettings.tabSize,
+            insertSpaces: editorSettings.insertSpaces,
+            cursorStyle: editorSettings.cursorStyle,
+            renderWhitespace: editorSettings.renderWhitespace,
+            scrollBeyondLastLine: editorSettings.scrollBeyondLastLine,
+            bracketPairColorization: { enabled: editorSettings.bracketPairColorization },
+            formatOnPaste: editorSettings.formatOnPaste,
             scrollbar: {
               vertical: 'hidden',
               horizontal: 'auto',
               handleMouseWheel: false,
             },
+            automaticLayout: true,
+            padding: { top: 12, bottom: 12 },
             overviewRulerLanes: 0,
             hideCursorInOverviewRuler: true,
             overviewRulerBorder: false,
             fixedOverflowWidgets: true,
             contextmenu: false,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
           }}
         />
       </Suspense>

@@ -1,11 +1,14 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm'; // Importe o plugin GFM
 import Editor from './Editor';
+import CellHistoryModal from './CellHistoryModal';
+import { useCellHistory } from '@/lib/cell-history';
+import { EditorSettings } from '@/lib/editor-settings';
 import {
   Play, Trash2, ChevronUp, ChevronDown, Edit3, Eye,
-  ChevronRight, GripVertical, Loader2
+  ChevronRight, GripVertical, Loader2, Clock
 } from 'lucide-react';
 
 // Language type
@@ -52,6 +55,7 @@ interface CellProps {
   theme: 'light' | 'dark';
   dragHandleProps?: any;
   lang: 'pt' | 'en';
+  editorSettings?: EditorSettings; // User editor preferences
   onUpdate: (id: string, content: string) => void;
   onDelete: (id: string) => void;
   onExecute: (id: string) => void | Promise<void>;
@@ -80,17 +84,77 @@ const cellTranslations = {
   }
 };
 
-const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, lang, onUpdate, onDelete, onExecute, onSave, onMove, onToggleCollapse, onLanguageChange }) => {
+const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, lang, editorSettings, onUpdate, onDelete, onExecute, onSave, onMove, onToggleCollapse, onLanguageChange }) => {
   const [isEditingMarkdown, setIsEditingMarkdown] = useState(cell.type === 'markdown' && !cell.content);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
   const t = cellTranslations[lang];
   const isDark = theme === 'dark';
   const currentLang = (cell.language || 'typescript') as CellLanguage;
   const CurrentLangIcon = languageConfig[currentLang].Icon;
 
+  // Cell history management
+  const history = useCellHistory(cell.id, cell.content || '', {
+    maxEntries: 50,
+    debounceMs: 3000
+  });
+
+  // Track content changes for history
+  useEffect(() => {
+    if (cell.content !== history.currentEntry?.content) {
+      history.addDebouncedSnapshot(cell.content || '');
+    }
+  }, [cell.content]);
+
+  // Keyboard shortcuts for history navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+H: Open history
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        e.preventDefault();
+        setShowHistory(true);
+      }
+      // Ctrl+Alt+Z: Go back in history
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        const previousContent = history.goBack();
+        if (previousContent !== null) {
+          onUpdate(cell.id, previousContent);
+        }
+      }
+      // Ctrl+Alt+Shift+Z: Go forward in history
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        const nextContent = history.goForward();
+        if (nextContent !== null) {
+          onUpdate(cell.id, nextContent);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [history, cell.id, onUpdate]);
+
   const handleDelete = () => {
     if (window.confirm(t.confirmDelete)) {
       onDelete(cell.id);
+    }
+  };
+
+  // Create snapshot before execution
+  const handleExecute = () => {
+    history.addSnapshot(cell.content || '', 'Antes da execução', true);
+    onExecute(cell.id);
+  };
+
+  // Handle restore from history
+  const handleRestore = (entryId: string) => {
+    const content = history.revertToVersion(entryId);
+    if (content !== null) {
+      onUpdate(cell.id, content);
+      setShowHistory(false);
     }
   };
 
@@ -137,10 +201,31 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
           <GripVertical size={18} />
         </div>
 
+        {/* History Button */}
+        {cell.type === 'code' && (
+          <button
+            onClick={() => setShowHistory(true)}
+            className={`p-2 rounded-full mb-2 relative transition-all duration-100 ease-in-out cursor-pointer
+              ${isDark
+                ? 'text-slate-500 hover:bg-slate-800 hover:text-blue-400'
+                : 'text-slate-400 hover:bg-blue-50 hover:text-blue-600'
+              }`}
+            title={`Histórico (${history.entryCount} versões) - Ctrl+H`}
+          >
+            <Clock size={18} />
+            {history.entryCount > 1 && (
+              <span className={`absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full flex items-center justify-center ${isDark ? 'bg-blue-500 text-white' : 'bg-blue-600 text-white'
+                }`}>
+                {history.entryCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Play Button only for Code */}
         {!cell.isCollapsed && cell.type === 'code' && (
           <button
-            onClick={() => onExecute(cell.id)}
+            onClick={handleExecute}
             disabled={cell.isExecuting}
             className={`p-2 rounded-full mb-2 group-play relative
               transition-all duration-100 ease-in-out
@@ -241,13 +326,13 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
           <div className="animate-in fade-in slide-in-from-top-1 duration-200">
             {cell.type === 'code' ? (
               <>
-                <Editor cellId={cell.id} cellIndex={cellIndex} value={cell.content} language={cell.language || 'typescript'} onChange={(val) => onUpdate(cell.id, val)} onExecute={() => onExecute(cell.id)} onSave={onSave} theme={theme} />
+                <Editor cellId={cell.id} cellIndex={cellIndex} value={cell.content} language={cell.language || 'typescript'} onChange={(val) => onUpdate(cell.id, val)} onExecute={() => onExecute(cell.id)} onSave={onSave} theme={theme} editorSettings={editorSettings} />
                 {renderOutput()}
               </>
             ) : (
               <div className="min-h-[50px]">
                 {isEditingMarkdown ? (
-                  <Editor cellId={cell.id} cellIndex={cellIndex} value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} />
+                  <Editor cellId={cell.id} cellIndex={cellIndex} value={cell.content} language="markdown" onChange={(val) => onUpdate(cell.id, val)} onExecute={() => setIsEditingMarkdown(false)} onSave={onSave} theme={theme} editorSettings={editorSettings} />
                 ) : (
                   // A MÁGICA DO MARKDOWN ACONTECE AQUI
                   <div
@@ -280,6 +365,30 @@ const Cell: React.FC<CellProps> = ({ cell, cellIndex, theme, dragHandleProps, la
           </div>
         )}
       </div>
+
+      {/* History Modal */}
+      <CellHistoryModal
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        history={history.history}
+        currentIndex={history.currentIndex}
+        currentContent={cell.content || ''}
+        language={currentLang}
+        theme={theme}
+        onRestore={handleRestore}
+        onDelete={history.deleteEntry}
+        onUpdateLabel={history.updateLabel}
+        canGoBack={history.canGoBack}
+        canGoForward={history.canGoForward}
+        onGoBack={() => {
+          const content = history.goBack();
+          if (content !== null) onUpdate(cell.id, content);
+        }}
+        onGoForward={() => {
+          const content = history.goForward();
+          if (content !== null) onUpdate(cell.id, content);
+        }}
+      />
     </div>
   );
 };

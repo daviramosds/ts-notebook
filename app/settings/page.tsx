@@ -9,6 +9,7 @@ import {
   Languages, Moon, Sun, LogOut, Eye, EyeOff, ArrowLeft
 } from 'lucide-react';
 import { updateUserProfile, changePassword, deleteAccount, updateUserPreferences, updateUsername } from '@/app/_actions/users'
+import EditorSettingsSection from '@/components/EditorSettingsSection';
 
 const settingsT = {
   pt: {
@@ -387,6 +388,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* Editor Settings */}
+        <EditorSettingsSection lang={lang} />
 
         {/* Cartão de Perfil */}
         <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
